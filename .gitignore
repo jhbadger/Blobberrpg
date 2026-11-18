@@ -1,0 +1,5 @@
+background/
+__pycache__/
+*.pyc
+*.app
+.DS_Store

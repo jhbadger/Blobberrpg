@@ -1,0 +1,518 @@
+#!/usr/bin/env python3
+"""The Ashen Crypt: a sample dungeon crawler for the Blobber engine.
+
+Hollowmere, a market town on the edge of the Fenwold.  Beneath its ruined
+chapel lies the crypt of Morvane, the Ashen King, and he is waking.  Take a
+party of six down through the Undercroft, the Catacombs and the Ashen
+Halls, destroy the King, and bring his crown to the temple to be unmade.
+
+Run it with ./ashencrypt (Python 3 with Tk, nothing else).  The game is
+saved to ~/.ashencrypt.json.  ./ashencrypt --selftest checks the maps.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+import blobber                                         # noqa: E402
+from blobber import rules                              # noqa: E402
+
+ID = 'ashencrypt'
+TITLE = 'The Ashen Crypt'
+SUBTITLE = 'A tale of Hollowmere and the waking of the Ashen King'
+TITLE_ART = 'ashenking'
+
+INTRO = [
+    "Hollowmere is a market town on the edge of the Fenwold. For three "
+    "hundred years the old chapel on its hill has kept watch over the grave "
+    "of Morvane, the Ashen King: a sorcerer-lord who burned half the north "
+    "before the saints laid him to rest.",
+
+    "This spring the chapel bell cracked by itself. The dead of the "
+    "churchyard have been seen walking, and every night a grey ash falls on "
+    "the rooftops like snow. The sage says the King is waking, and that his "
+    "crown holds his power.",
+
+    "The temple has called for adventurers. Go down into the crypt beneath "
+    "the chapel, destroy the Ashen King, and bring his crown to the temple "
+    "to be unmade.\n\nYour party stands on the main street. The Guild is to "
+    "the west, the Armoury to the east, and the crypt gate at the end of "
+    "the street to the north.",
+]
+WELCOME = "You stand on the main street of Hollowmere. Grey ash drifts " \
+          "down from a clear sky."
+DEATH = "Your party has perished in the dark beneath Hollowmere. Their " \
+        "bones will lie with the Ashen King's, until braver souls come."
+
+GOLD = 160
+START = ('town', 8, 4, 0)
+
+# ------------------------------------------------------------ the party
+
+PARTY = [
+    dict(name='Brannoc', race='Human', cls='Fighter', st=17, iq=9, dx=13,
+         cn=16, lk=11, hp=14),
+    dict(name='Hild', race='Dwarf', cls='Paladin', st=16, iq=11, dx=10,
+         cn=17, lk=10, hp=13),
+    dict(name='Torvald', race='Dwarf', cls='Fighter', st=16, iq=8, dx=11,
+         cn=17, lk=9, hp=14),
+    dict(name='Pip Underbough', race='Halfling', cls='Rogue', st=10, iq=12,
+         dx=18, cn=12, lk=17, hp=8, pack=['torch']),
+    dict(name='Mother Aveline', race='Human', cls='Priest', st=11, iq=15,
+         dx=10, cn=13, lk=12, hp=10, pack=['potion']),
+    dict(name='Elowen', race='Elf', cls='Mage', st=8, iq=18, dx=15, cn=10,
+         lk=11, hp=6, pack=['torch']),
+]
+
+# ------------------------------------------------------------ the rules
+
+rules.XP_TABLE[:] = [0, 0, 40, 100, 200, 350, 550, 800, 1150, 1600, 2200,
+                     3000, 4000, 5200]
+
+rules.ITEMS.update({
+    'ironkey':    dict(name='Iron Key', kind='key', price=0,
+                       text="The undercroft warden's key, heavy and black."),
+    'bonekey':    dict(name='Bone Key', kind='key', price=0,
+                       text='A key carved from a thighbone.'),
+    'crown':      dict(name='Crown of Ash', kind='quest', price=0,
+                       text='The cold grey crown of the Ashen King.'),
+    'embersword': dict(name='Ember Blade', kind='weapon', dmg='1d8+3', hit=2,
+                       gear='heavy', price=600,
+                       text='Ember Blade: 1d8+3, +2 to hit. It never cools.'),
+    'saintmace':  dict(name="Saint's Mace", kind='weapon', dmg='2d4+2', hit=2,
+                       gear='blunt', price=450,
+                       text="Saint's Mace: 2d4+2, +2 to hit."),
+    'wardring':   dict(name='Ring of Warding', kind='ring', ac=2, price=400),
+    'elvenmail':  dict(name='Elven Mail', kind='armor', ac=5, gear='light',
+                       price=700, text='Elven Mail: armour +5, light as '
+                                       'silk; rogues may wear it.'),
+})
+
+rules.MONSTERS['deathknight'].update(level=7, hp='8d10', dmg='1d8+2')
+rules.MONSTERS.update({
+    'ashenking': dict(name='Ashen King', plural='Ashen Kings', unique=True,
+                      art='ashenking', level=10, hp='12d10+30', ac=2, hits=2,
+                      dmg='1d10+2', xp=2400, gold='0', undead=True,
+                      special=['breath:3d6:30', 'drain:10'],
+                      breath_msg='raises his staff, and ash-fire rains '
+                                 'down!'),
+})
+
+# ------------------------------------------------------------ the town
+
+TOWN = dict(
+    name='Hollowmere',
+    outdoor=True,
+    theme=dict(floor='cobbles', fog='#c4d4e0', light=7.5, falling='#9a9a9e',
+               sky_top='#2a4a88', sky_horizon='#d0dce4'),
+    map=[
+        "%%%%%%%%C%%%%%%%%%",
+        "%t.....l.l......t%",
+        "%.###.......####.%",
+        "%.#G#..t.t..#A##.%",
+        "%...............l%",
+        "%.##.##...##.###.%",
+        "%.#I.##.f.##.#P#.%",
+        "%.##......t......%",
+        "%....##.....###..%",
+        "%l...#W.....#....%",
+        "%t........l.....t%",
+        "%%%%%%%%%%%%%%%%%%",
+    ],
+    legend={
+        '%': dict(solid=True, wall='citywall'),
+        '#': dict(solid=True, wall=['house_a', 'house_b', 'house_c',
+                                    'house_d']),
+        'G': dict(solid=True, wall='shop_guild', shop='guild',
+                  name="Adventurers' Guild", art='guildmaster',
+                  backdrop='cata',
+                  greeting='Old Master Corwin looks up from his ledgers. '
+                           '"Well met. The temple pays well, and the crypt '
+                           'pays better, if you live."'),
+        'A': dict(solid=True, wall='shop_armory', shop='shop',
+                  name="Greta's Armoury", art='smith', backdrop='cellar',
+                  greeting='Greta wipes soot from her hands. "Steel, '
+                           'leather, a torch for the dark? I have it all."'),
+        'I': dict(solid=True, wall='shop_inn', shop='inn',
+                  name='The Cracked Bell', art='innkeeper',
+                  backdrop='cellar', price=4,
+                  greeting='Fat Oswin polishes a tankard. "Beds are clean '
+                           'and the stew is hot. Four crowns a head."',
+                  news=['"Old Tam swears he saw his own grandmother walk '
+                        'past the churchyard wall. She\'s been dead twenty '
+                        'years."',
+                        '"Kobolds, in the chapel cellars! Nasty little '
+                        'things. They\'ve been carrying off candlesticks."',
+                        '"The ash? Comes down every night now. My wife '
+                        'sweeps it off the step each morning, and it '
+                        'smells of burning hair."',
+                        '"The sage in the purple tower knows the old stories. '
+                        'He\'ll tell you, if you pay him."',
+                        '"They say the Ashen King had knights who swore to '
+                        'guard him even in death. I\'d not like to meet '
+                        'them."']),
+        'P': dict(solid=True, wall='shop_temple', shop='temple',
+                  name='Temple of Saint Aldric', art='priestess',
+                  backdrop='cata',
+                  greeting='Sister Maud bows. "Saint Aldric bound the King '
+                           'once. Bring us his crown, and we will finish '
+                           'what the saint began."'),
+        'W': dict(solid=True, wall='shop_sage', shop='sage',
+                  name="Thessaly the Sage", art='sage', backdrop='cata',
+                  price=15,
+                  greeting='Thessaly peers over a heap of books. "Ah. More '
+                           'heroes. Sit, sit. Knowledge costs fifteen '
+                           'crowns."',
+                  lore='"Morvane was a king of the north who sought to live '
+                       'forever. He burned his own cities to feed his '
+                       'magic, and when the saints brought him down he '
+                       'cursed them with his last breath. Saint Aldric '
+                       'buried him under the chapel with his crown on his '
+                       'head and his knights at his door. Three levels '
+                       'down, they say: the undercroft, the catacombs, and '
+                       'the halls the King built for himself."'),
+        'C': dict(solid=True, wall='crypt_gate',
+                  goto=['crypt1', 1, 1, 2],
+                  ask='The crypt gate stands open. Go down into the crypt '
+                      'beneath the old chapel?'),
+        't': dict(sprite='tree'),
+        'l': dict(sprite='lamppost'),
+        'f': dict(sprite='fountain', once=True, title='The Fountain',
+                  msg='The fountain of Saint Aldric. Coins glint in the '
+                      'basin, and a film of grey ash floats on the water.'),
+    },
+)
+
+# ------------------------------------------------- level 1: the undercroft
+
+CRYPT1 = dict(
+    name='The Undercroft',
+    depth=1,
+    theme=dict(wall='cellar', door='cellar_door', locked='cellar_locked',
+               floor='cellar_floor', ceil='cellar_ceil', stairs='stairs_down',
+               ambient=1.3,
+               variants=[('cellar_moss', 0.12), ('cellar_torch', 0.08),
+                         ('cellar_crack', 0.08), ('cellar_banner', 0.03)]),
+    rate=0.05,
+    encounters=[
+        (5, [('rat', 2, 5)]),
+        (3, [('bat', 3, 6)]),
+        (4, [('kobold', 2, 4)]),
+        (2, [('slime', 1, 2)]),
+        (2, [('thief', 2, 3)]),
+        (1, [('skeleton', 1, 3), ('rat', 1, 3)]),
+    ],
+    map=[
+        "####################",
+        "#<..a#.......#.....#",
+        "#.##.#.#####.#.###.#",
+        "#.#..+.#...#...#...#",
+        "#.#.####.#.#####.###",
+        "#...#....#.....#...#",
+        "###.#.########.###.#",
+        "#...#.#c.....#.#...#",
+        "#.###.#####.##.#.#.#",
+        "#.....#.....#..#.#.#",
+        "###+###.###.#.##.#.#",
+        "#.....#.#...#.#..#.#",
+        "#.###.#.#.###.#.##.#",
+        "#.#f#.#.#.....#.#..#",
+        "#.#.#.#.#######.#.##",
+        "#...#.#.......#.#..#",
+        "#####S#######.#.##=#",
+        "#K....#.......#.#.>#",
+        "#b....#.T.....#d#..#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='stairs_up', stairs='up', goto=['town', 8, 1, 2],
+                  once=True, title='The Undercroft',
+                  msg='You climb down worn steps into the undercroft of the '
+                      'ruined chapel. The air smells of damp earth and old '
+                      'candle smoke, and somewhere ahead something '
+                      'scurries.\n\nIt is dark. A torch (in a pack: press '
+                      'a number to open a character) or a Glimmer spell '
+                      'would help.'),
+        '>': dict(floor='@stairs', stairs='down', goto=['crypt2', 18, 1, 3]),
+        'a': dict(once=True, title='Scratched on the wall',
+                  msg='Someone has scratched words into the brick:\n\n'
+                      '"Kobolds took Warden Hobb\'s key. They come and go '
+                      'through the wall at the end of the south hall. '
+                      'Walls lie here."'),
+        'c': dict(sprite='chest', chest=dict(gold='3d10+20',
+                                             items=['potion'],
+                                             trap='poison')),
+        'd': dict(sprite='chest', chest=dict(gold='2d20',
+                                             items=['antidote', 'torch'])),
+        'f': dict(sprite='fountain', fountain='heal',
+                  look='A little fountain trickles here, fed by a spring. '
+                       'Drink from it?'),
+        'K': dict(fight=[('kobold', 4)], flag='ironkey', item='ironkey',
+                  fight_msg='Kobolds! A band of them squats around a heap '
+                            'of stolen candlesticks. The biggest wears an '
+                            'iron key on a thong around its neck.',
+                  item_msg='Among the candlesticks lies the Iron Key.'),
+        'b': dict(sprite='bones', item='firescroll', once=True,
+                  title='Bones',
+                  msg='The bones of some earlier adventurer lie here, '
+                      'picked clean. A scroll case is still clutched in '
+                      'one hand.'),
+        'T': dict(item='torch', item_msg='A torch lies here, still good.'),
+        '=': dict(solid=True, door='locked', key='ironkey'),
+    },
+)
+
+# --------------------------------------------------- level 2: the catacombs
+
+CRYPT2 = dict(
+    name='The Catacombs',
+    depth=2,
+    theme=dict(wall='cata', door='cata_door', locked='cata_locked',
+               floor='cata_floor', ceil='cata_ceil', stairs='cata_stairs',
+               ambient=1.2,
+               variants=[('cata_niche', 0.14), ('cata_moss', 0.1),
+                         ('cata_torch', 0.07), ('cata_runes', 0.02)]),
+    rate=0.055,
+    encounters=[
+        (4, [('skeleton', 2, 4)]),
+        (3, [('zombie', 2, 3)]),
+        (3, [('spider', 1, 3)]),
+        (2, [('ghoul', 1, 2)]),
+        (2, [('cultist', 1, 2), ('skeleton', 1, 3)]),
+        (2, [('thief', 3, 4)]),
+        (1, [('bat', 4, 6)]),
+    ],
+    map=[
+        "####################",
+        "#.....#......#....<#",
+        "#.###.#.####.#.###.#",
+        "#.#...#.#..#.#.#...#",
+        "#.#.###.#..#...#.###",
+        "#.#.....#.##########",
+        "#.#######k#...:::..#",
+        "#....s....#.#.###:.#",
+        "####.######.#.#.#:.#",
+        "#...x.#.....#.#.#:v#",
+        "#.###.#.#####.#.####",
+        "#.#c#.#.#B..#.#.R..#",
+        "#.#.#.#.#...#.#.#..#",
+        "#.#.#...#.#.#...#..#",
+        "#.#.#####.#.#####.##",
+        "#...#.....#.....#..#",
+        "#.###.#####.###.#=##",
+        "#.#m..#...#.#.p.#..#",
+        "#.....#.#.....#.#>.#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='stairs_up', stairs='up',
+                  goto=['crypt1', 18, 17, 3], once=True,
+                  title='The Catacombs',
+                  msg='The stairs open into the catacombs: long halls of '
+                      'grey stone where the faithful of Hollowmere were '
+                      'laid in niches, row on row. Not all of them are in '
+                      'their niches now.'),
+        '>': dict(floor='@stairs', stairs='down', goto=['crypt3', 1, 1, 2]),
+        's': dict(sprite='statue', once=True, title='A Statue',
+                  msg='A statue of a robed saint, worn smooth by centuries. '
+                      'Words are carved on its plinth:\n\n"Every pilgrim '
+                      'leaves them on the road, and none of them takes '
+                      'them home."'),
+        'x': dict(spin=True),
+        'c': dict(sprite='chest', chest=dict(gold='4d10+30',
+                                             items=['potion', 'potion'],
+                                             trap='blast')),
+        'v': dict(dark=True, chest=dict(gold='50', items=['wardring'],
+                                        look='Groping in the dark, you '
+                                             'find a small chest.')),
+        'B': dict(fight=[('ghoul', 3)], flag='bonekey', item='bonekey',
+                  sprite='bones', sprite_after='bones',
+                  fight_msg='A bone-house, heaped with skulls. Three ghouls '
+                            'look up from their feast, and one wears a key '
+                            'of bone.'),
+        'k': dict(fight=[('cultist', 2), ('zombie', 2)], flag='altar',
+                  sprite='altar', sprite_after='altar',
+                  fight_msg='Robed figures turn from a black altar. "The '
+                            'King wakes!" one cries. "Feed him!" The dead '
+                            'shamble up behind them.',
+                  after='On the altar lies a heavy mace blessed with a '
+                        "saint's sign: they meant to defile it.",
+                  item='saintmace'),
+        'R': dict(solid=True, riddle=dict(
+            flag='riddle', title='The Warden Speaks',
+            q='A stone face in the door opens its eyes. "The more of these '
+              'you take, the more of them you leave behind. What are they?"',
+            a=['footsteps', 'steps', 'footprints', 'foot steps'],
+            right='"Pass, pilgrim," says the face, and the door grinds '
+                  'open.',
+            wrong='The stone face closes its eyes.')),
+        '=': dict(solid=True, door='locked', key='bonekey'),
+        'm': dict(sprite='fountain', fountain='mana',
+                  look='Silver water bubbles in a basin carved with stars. '
+                       'Drink from it?'),
+        'p': dict(sprite='portal', teleport=[18, 2, 2],
+                  tmsg='The portal whisks you away!'),
+    },
+)
+
+# ------------------------------------------------- level 3: the ashen halls
+
+CRYPT3 = dict(
+    name='The Ashen Halls',
+    depth=3,
+    theme=dict(wall='ashen', door='ashen_door', locked='ashen_locked',
+               floor='ashen_floor', ceil='ashen_ceil', stairs='ashen_stairs',
+               ambient=1.15,
+               variants=[('ashen_ember', 0.14), ('ashen_torch', 0.07),
+                         ('ashen_banner', 0.05), ('ashen_runes', 0.02)]),
+    rate=0.05,
+    encounters=[
+        (3, [('ghoul', 2, 4)]),
+        (3, [('wraith', 1, 2)]),
+        (3, [('orc', 2, 4)]),
+        (2, [('imp', 1, 3)]),
+        (2, [('cultist', 2, 3), ('orc', 1, 2)]),
+        (1, [('deathknight', 1, 1)]),
+    ],
+    map=[
+        "####################",
+        "#<.....#.....#.....#",
+        "#.####.#.###.#.###.#",
+        "#.#..#...#.#...#...#",
+        "#.#^.#####.#####.#.#",
+        "#.#..........e...#.#",
+        "#.########.####.##.#",
+        "#....#.....#.f#....#",
+        "####.#.###.#.##.##.#",
+        "#....#.#x#.#.......#",
+        "#.####.#.#.#######.#",
+        "#......#....G.....i#",
+        "#####.######D#######",
+        "#...#.#...........##",
+        "#.#.#.#.b.......b.##",
+        "#.#...#...........##",
+        "#.###.#.b.......b.##",
+        "#..n..#.....K.....##",
+        "#c^n..#.....H.....##",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='stairs_up', stairs='up',
+                  goto=['crypt2', 17, 18, 0], once=True,
+                  title='The Ashen Halls',
+                  msg='The air is hot and dry, and tastes of smoke. These '
+                      'halls were not built for the dead of Hollowmere: '
+                      'Morvane built them for himself, and the stone still '
+                      'glows where his fire touched it.'),
+        '^': dict(trap=dict(dmg='2d6', msg='The floor gives way beneath '
+                                           'you!')),
+        'e': dict(once=True, title='Burning Words',
+                  msg='Letters of fire hang in the air:\n\n"I am Morvane, '
+                      'and I do not die. Steel and spell I have outlasted. '
+                      'Only the light of the saints ever bound me."'),
+        'f': dict(sprite='fountain', fountain='heal',
+                  look='A fountain of clear water, untouched by the ash. '
+                       'Someone carved a saint\'s sign above it. Drink?'),
+        'x': dict(teleport=[1, 2, 2], tmsg='Red runes flare under your '
+                                           'feet, and the hall is gone!'),
+        'i': dict(fight=[('imp', 3)], flag='imps', item='potion',
+                  sprite='brazier', sprite_after='brazier',
+                  fight_msg='Fire imps cavort around a brazier, giggling. '
+                            'They see you, and their giggling stops.'),
+        'G': dict(fight=[('deathknight', 2)], flag='knights',
+                  fight_msg="Two knights in black armour stand before a "
+                            "great door. Their eyes burn red behind their "
+                            "visors. \"None pass,\" they say together, and "
+                            "draw their swords.",
+                  after='The knights fall, and their armour crumbles to '
+                        'ash. The great door to the south stands '
+                        'unguarded.'),
+        'D': dict(solid=True, door=True),
+        'b': dict(sprite='brazier'),
+        'K': dict(fight=[('ashenking', 1)], flag='kingdead', run=False,
+                  sprite='ashenking', sprite_after='throne', item='crown',
+                  fight_msg='On a throne of black stone sits a skeleton '
+                            'robed in ash, a grey crown on its brow. Green '
+                            'fire kindles in its eyes.\n\n"Saint Aldric\'s '
+                            'children," it whispers. "I have waited three '
+                            'hundred years to repay your kind."',
+                  after='The Ashen King screams, and his body falls apart '
+                        'into a drift of grey ash. Only the crown is left, '
+                        'cold as the grave.\n\nBehind the throne, a '
+                        'shimmering portal opens.',
+                  item_msg='You take up the Crown of Ash.'),
+        'H': dict(sprite='portal', requires='kingdead',
+                  goto=['town', 8, 1, 2],
+                  ask='The portal shimmers. Step through it back to '
+                      'Hollowmere?'),
+        'n': dict(antimagic=True, once=True, title='A Dead Place',
+                  msg='Your skin prickles. The air here drinks magic like '
+                      'dry earth drinks rain.'),
+        'c': dict(sprite='chest', antimagic=True,
+                  chest=dict(gold='3d20+60', items=['embersword',
+                                                    'elvenmail'],
+                             trap='blast')),
+    },
+)
+
+LEVELS = {'town': TOWN, 'crypt1': CRYPT1, 'crypt2': CRYPT2,
+          'crypt3': CRYPT3}
+
+# ------------------------------------------------------- the sage's counsel
+
+HINTS = [
+    ('ironkey', '"Kobolds have stolen the undercroft warden\'s iron key, '
+                'and with it the way down. They creep in and out through a '
+                'false wall at the end of the south hall. Walk into it, or '
+                'search (F) beside it."'),
+    ('riddle', '"In the catacombs a stone warden guards the way down with '
+               'a riddle. The saint\'s statue knows the answer. What does '
+               'every traveller leave on the road? Footsteps, my friend."'),
+    ('bonekey', '"The warden\'s door leads to a second door, and that one '
+                'needs a key of bone. Ghouls keep it, in their bone-house in '
+                'the middle of the catacombs."'),
+    ('knights', '"Below, in the Ashen Halls, two of Morvane\'s knights '
+                'still guard his door. Bless your blows and ward '
+                'yourselves: they hit like falling towers. And drink from '
+                'the saint\'s fountain first."'),
+    ('kingdead', '"The King himself is undead. Holy smiting burns him '
+                 'twice over. There is a vault in his halls where magic '
+                 'dies, and in it a blade that does not need magic."'),
+    (None, '"Take the crown to the temple, and let it be unmade."'),
+]
+
+# --------------------------------------------------------------- the ending
+
+
+def temple_hook(g, sq):
+    """Bringing the crown to the temple ends the game."""
+    if g.st.won or not g.has_item('crown'):
+        return False
+    g.take_item('crown')
+    g.victory([
+        dict(art='priestess', title='The Crown of Ash',
+             text="Sister Maud takes the Crown of Ash in both hands. It is "
+                  "so cold it burns. \"So it ends,\" she says, and lays it "
+                  "on the altar fire.\n\nIt does not melt. It crumbles, "
+                  "like a log that has burned all night, into a heap of "
+                  "grey ash, and the fire goes out."),
+        dict(text="That night no ash falls on Hollowmere. The chapel bell, "
+                  "cracked these three months, is found whole in the "
+                  "morning, and rings by itself until noon.\n\nThe people "
+                  "say it is the saints. Thessaly says it is the old "
+                  "binding, healed at last."),
+        dict(art='guildmaster', title='The End',
+             text="Your names are written in the Guild's book, beside the "
+                  "saints who first laid the Ashen King to rest.\n\nThe "
+                  "crypt is quiet now. You may wander Hollowmere and its "
+                  "depths as long as you like.\n\nThank you for playing."),
+    ])
+    return True
+
+
+HOOKS = {'shop:temple': temple_hook}
+
+
+if __name__ == '__main__':
+    blobber.run(sys.modules[__name__])
