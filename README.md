@@ -113,7 +113,10 @@ The buttons under the scroll do what the keys do (act, cast, map, search,
 help, menu). Tap a roster line to open that character's sheet, which has
 buttons of its own, and tap choices on the scroll. Names and riddle
 answers have an on-screen keyboard. F11 toggles full screen. The window
-scales to fit whatever size you give it.
+scales to fit whatever size you give it, and a window taller than it is
+wide (a phone held upright) gets the upright layout: the view on top, the
+scroll under it and a narrower roster at the bottom. The character sheet
+stays wide.
 
 ### Apps
 
@@ -190,6 +193,7 @@ outside a fight, and the title screen can load them too.
 | `balance.py` | a simulated player that measures a game's difficulty |
 | `tkshell.py` | the Tk window |
 | `kivyshell.py` | the Kivy window, for the Android app |
+| `layout.py` | the upright layout, made from the wide screen, with taps mapped back |
 | `build.py` | the icon, the macOS app and the Android project |
 
 The whole screen, text included, is drawn into one framebuffer in pure
@@ -287,6 +291,33 @@ green, holy gold). A monster's breath can name its `breath_colour` and
 
 New textures and pictures are functions registered with
 `@textures.texture('name')` and `@art.picture('name', w, h, height)`.
+
+### Testing
+
+```bash
+./run_tests.py
+```
+
+This runs every test, the engine's and then each game's, each game in its
+own Python (a game rewrites the engine's rules tables). It takes about 40
+seconds. `--long` plays 40 random games per game instead of 4, `--no-gui`
+skips the tests that open windows, and naming a game tests just that one.
+Set `KIVY_PYTHON` to a Python with Kivy installed to test the Kivy window
+too.
+
+Most of the tests in `tests/test_game.py` are generic, so a new game gets
+them for nothing:
+
+- the self-test (below);
+- every level drawn wide and upright;
+- saving, loading and save slots;
+- a fuzz test: random keys and taps;
+- every guardian beaten by a strong party;
+- every topic of every conversation asked, before and after its condition
+  is met.
+
+`tests/scenarios.py` adds each game's own story: the endings and the side
+quests, played from start to finish.
 
 ### Checking a game
 

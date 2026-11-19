@@ -50,17 +50,15 @@ class KivyShell:
     def build_root(self):
         shell = self
         g = self.g
-        tex = self.Texture.create(size=(W, H), colorfmt='rgb')
-        tex.mag_filter = tex.min_filter = 'nearest'
-        tex.flip_vertical()             # Kivy counts rows from the bottom
-        self.tex = tex
+        self.fsize = (W, H)
+        tex = self.make_texture(W, H)
         gr = self.graphics
 
         class Screen(self.Widget):
             def on_touch_down(self, touch):
                 x, y = shell.to_game(touch.x, touch.y)
-                if 0 <= x < W and 0 <= y < H:
-                    g.click(x, y)
+                if 0 <= x < shell.fsize[0] and 0 <= y < shell.fsize[1]:
+                    g.tap(x, y)
                     shell.after_input()
                 return True
 
@@ -74,8 +72,18 @@ class KivyShell:
         self.fit()
         return root
 
+    def make_texture(self, w, h):
+        tex = self.Texture.create(size=(w, h), colorfmt='rgb')
+        tex.mag_filter = tex.min_filter = 'nearest'
+        tex.flip_vertical()             # Kivy counts rows from the bottom
+        self.tex = tex
+        return tex
+
     def fit(self, *args):
         ww, wh = self.Window.size
+        # an upright window (a phone held upright) gets the upright layout
+        self.g.portrait = wh > ww * 1.05
+        W, H = self.fsize
         s = min(ww / W, wh / H)
         # whole pixels look crisper when the screen is big enough for them
         if s >= 2:
@@ -91,11 +99,15 @@ class KivyShell:
     def to_game(self, tx, ty):
         """Kivy's point (from the bottom left) to the game's pixel."""
         x = int((tx - self.ox) / self.scale)
-        y = int(H - (ty - self.oy) / self.scale)
+        y = int(self.fsize[1] - (ty - self.oy) / self.scale)
         return x, y
 
     def draw(self):
-        s = self.g.render()
+        s = self.g.frame()
+        if (s.w, s.h) != self.fsize:
+            self.fsize = (s.w, s.h)
+            self.rect.texture = self.make_texture(s.w, s.h)
+            self.fit()
         self.tex.blit_buffer(bytes(s.buf), colorfmt='rgb', bufferfmt='ubyte')
         self.root.canvas.ask_update()
 

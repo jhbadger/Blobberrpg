@@ -45,6 +45,8 @@ class TkShell:
         self.item = self.canvas.create_image(0, 0, anchor='nw')
         self.img = None
         self.ox = self.oy = 0
+        self.win = (ww, wh)             # the window's size
+        self.fsize = (W, H)             # the size of the picture shown
         self.root.bind('<Key>', self.on_key)
         self.canvas.bind('<Button-1>', self.on_click)
         self.root.bind('<Configure>', self.on_resize)
@@ -77,16 +79,24 @@ class TkShell:
     def on_resize(self, e):
         if e.widget is not self.root:
             return
+        self.win = (e.width, e.height)
+        # an upright window (a phone held upright) gets the upright layout
+        self.g.portrait = e.height > e.width * 1.05
+        self.place()
+        self.g.dirty = True
+
+    def place(self):
+        """Scale and centre the picture in the window."""
+        fw, fh = self.fsize
+        ww, wh = self.win
         best = (1, 1)
         for (a, b) in SCALES:
-            if W * a / b <= e.width and H * a / b <= e.height:
+            if fw * a / b <= ww and fh * a / b <= wh:
                 best = (a, b)
-        if best != self.zoom:
-            self.zoom = best
-        self.ox = max(0, (e.width - W * self.zoom[0] // self.zoom[1]) // 2)
-        self.oy = max(0, (e.height - H * self.zoom[0] // self.zoom[1]) // 2)
+        self.zoom = best
+        self.ox = max(0, (ww - fw * best[0] // best[1]) // 2)
+        self.oy = max(0, (wh - fh * best[0] // best[1]) // 2)
         self.canvas.coords(self.item, self.ox, self.oy)
-        self.g.dirty = True
 
     def on_key(self, e):
         ks = e.keysym
@@ -111,8 +121,8 @@ class TkShell:
         a, b = self.zoom
         x = (e.x - self.ox) * b // a
         y = (e.y - self.oy) * b // a
-        if 0 <= x < W and 0 <= y < H:
-            self.g.click(x, y)
+        if 0 <= x < self.fsize[0] and 0 <= y < self.fsize[1]:
+            self.g.tap(x, y)
             self.after_input()
 
     def after_input(self):
@@ -132,7 +142,10 @@ class TkShell:
             self.root.destroy()
 
     def draw(self):
-        s = self.g.render()
+        s = self.g.frame()
+        if (s.w, s.h) != self.fsize:
+            self.fsize = (s.w, s.h)
+            self.place()
         img = tk.PhotoImage(data=s.ppm(), format='PPM')
         a, b = self.zoom
         if a != 1:

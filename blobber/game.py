@@ -345,6 +345,8 @@ class Game:
         self.flash_rows = {}        # roster row -> time left
         self.view_flash = 0.0
         self.roster_override = None
+        self.portrait = False           # set by the shell for an upright
+        self.showing_portrait = False   # window
         self.view_flash_col = None
         self.clock = 0.0
         self.warm = None            # a generator preparing the view
@@ -875,6 +877,29 @@ class Game:
         self.draw_roster(s, getattr(m, 'roster_sel', None))
         self.dirty = False
         return s
+
+    def frame(self):
+        """The picture for the shell to show: the wide screen, or the
+        upright one when the shell has set self.portrait (and the mode
+        doesn't need the full width)."""
+        s = self.render()
+        self.showing_portrait = self.portrait and \
+            not getattr(self.mode, 'full', False)
+        if self.showing_portrait:
+            from . import layout
+            return layout.compose(self, s)
+        return s
+
+    def tap(self, x, y):
+        """A click or touch on the picture frame() last returned."""
+        if self.showing_portrait:
+            from . import layout
+            p = layout.to_wide(x, y)
+            if p is None:
+                return
+            x, y = p
+        if 0 <= x < W and 0 <= y < H:
+            self.click(x, y)
 
     # ----------------------------------------------------------- input
 
