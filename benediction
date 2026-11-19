@@ -195,6 +195,7 @@ rules.ITEMS.update({
                        hit=1, range=60, ammo='rounds', gear='heavy',
                        price=120, verb='rakes'),
     'flamer':     dict(name='Purging Flamer', kind='weapon', dmg='2d6',
+                       colour='#ff7020',
                        range=20, area=True, ammo='fuel', gear='heavy',
                        price=150, verb='sprays fire over',
                        text='Purging Flamer: 2d6 to every foe in a group, '
@@ -246,6 +247,12 @@ rules.ITEMS.update({
                        amount=20, price=10),
     'fuel':       dict(name='Fuel (8)', kind='ammo', ammo='fuel', amount=8,
                        price=20),
+    'mercyshield': dict(name='Shield of the Mercy', kind='shield', ac=3,
+                        gear='plate', price=400,
+                        text='Shield of the Mercy: armour +3. The pilgrim '
+                             "ship's sigil, in gold."),
+    'tomasicon':  dict(name="Tomas's Icon", kind='quest', price=0,
+                       text='A little brass icon of the Saint, on a chain.'),
     # the mission
     'redcard':    dict(name='Red Keycard', kind='key', price=0,
                        text='A red keycard stamped with the Benediction\'s '
@@ -262,67 +269,87 @@ rules.SPELLS.clear()
 rules.SPELLS.update({
     # the Psion's powers
     'LNCE': dict(name='Psy-Lance', school='psi', level=1, sp=3, target='foe',
+                 colour='#d070ff',
                  effect='damage', dice='2d6', per=1, combat=True,
                  text='A lance of mind-fire at one foe.'),
     'LUME': dict(name='Witchlight', school='psi', level=1, sp=2,
+                 colour='#c0e0ff',
                  target='none', effect='light', light=5.0, turns=300,
                  combat=False, text='Cold light that shows the far halls.'),
     'STRM': dict(name='Mind Storm', school='psi', level=2, sp=6,
+                 colour='#b050ff',
                  target='group', effect='damage', dice='2d6', per=1,
                  combat=True, text='Psychic fire through a group of foes.'),
     'SCRY': dict(name='Far Sight', school='psi', level=2, sp=4,
+                 colour='#a0a0ff',
                  target='none', effect='locate', combat=False,
                  text='Shows where you are and the decks around you.'),
     'BARR': dict(name='Kinetic Barrier', school='psi', level=3, sp=5,
+                 colour='#80d0ff',
                  target='party', effect='ward', amount=2, combat=True,
                  text='The squad is harder to hit this fight.'),
     'STUN': dict(name='Psychic Scream', school='psi', level=3, sp=6,
+                 colour='#e090ff',
                  target='group', effect='sleep', immune=['machine'],
                  combat=True, text='Stuns a group of living foes.'),
     'TEMP': dict(name='Void Tempest', school='psi', level=4, sp=11,
+                 colour='#9040ff',
                  target='foes', effect='damage', dice='3d6', per=1,
                  combat=True, text="A storm of force on every foe within "
                                    "30'."),
     'STEP': dict(name='Phase Step', school='psi', level=4, sp=9,
+                 colour='#c0b0ff',
                  target='none', effect='phase', combat=False,
                  text='Step through the bulkhead in front of you.'),
     'RIFT': dict(name='Rift Lance', school='psi', level=5, sp=16,
+                 colour='#6010a0',
                  target='foe', effect='damage', dice='8d8', per=2,
                  combat=True, text='Tears one foe apart.'),
     'RECL': dict(name='Translocation', school='psi', level=5, sp=14,
+                 colour='#ffffff',
                  target='none', effect='recall', combat=False,
                  text='Carries the squad back to the Unbending Vow.'),
     # the Confessor's rites
     'MEND': dict(name='Field Rite', school='rite', level=1, sp=2,
+                 colour='#70ff90',
                  target='ally', effect='heal', dice='2d6', per=1,
                  combat=True, text='Heals one brother.'),
     'FURY': dict(name='Litany of Fury', school='rite', level=1, sp=3,
+                 colour='#ff9040',
                  target='party', effect='bless', amount=2, combat=True,
                  text='The squad strikes truer this fight.'),
     'PURG': dict(name='Purifying Rite', school='rite', level=2, sp=4,
+                 colour='#a0ffe0',
                  target='ally', effect='cure', combat=True,
                  text='Cures infection and stunning.'),
     'ABJR': dict(name='Rite of Abjuration', school='rite', level=2, sp=5,
+                 colour='#fff0b0',
                  target='group', effect='turn', tag='hollowed', combat=True,
                  text='Frees a group of the hollowed from the Brood.'),
     'SGHT': dict(name="Saint's Sight", school='rite', level=3, sp=5,
+                 colour='#ffffa0',
                  target='none', effect='sight', turns=200, combat=False,
                  text='Reveals hidden hatches as you walk.'),
     'BNDC': dict(name='Benediction', school='rite', level=3, sp=9,
+                 colour='#ffe890',
                  target='party', effect='heal', dice='2d8', per=1,
                  combat=True, text='Heals the whole squad.'),
     'WRTH': dict(name="Emperor's Wrath", school='rite', level=4, sp=8,
+                 colour='#ffd040',
                  target='foe', effect='smite', dice='4d8', per=1,
                  bane='xenos', combat=True,
                  text='Holy fire on one foe, doubled against the alien.'),
     'RISE': dict(name='Rite of Return', school='rite', level=5, sp=20,
+                 colour='#ffffff',
                  target='ally', effect='raise', combat=False,
                  text='Calls a fallen brother back from death.'),
     # what grenades and charges do
     'FRAG': dict(name='Frag Grenade', school='item', level=9, sp=0,
+                 colour='#ffa040',
                  target='group', effect='damage', dice='3d6', per=0,
                  combat=True, text='Shrapnel through a group.'),
     'MELT': dict(name='Melta Charge', school='item', level=9, sp=0,
+                 colour='#ff5010',
                  target='foe', effect='damage', dice='6d6', per=0,
                  combat=True, text='Melts one foe.'),
 })
@@ -357,7 +384,9 @@ rules.MONSTERS.update({
                        gold='2d8', group=(1, 2), range=True,
                        shoots='spits acid at', tags=['xenos'],
                        special=['breath:2d6:25', 'poison:20'],
-                       breath_msg='sprays a fan of acid!'),
+                       breath_msg='sprays a fan of acid!',
+                       breath_colour='#90ff40',
+                       breath_hurt='%s is splashed for %d.'),
     'whisperer':  dict(name='Whisperer', plural='Whisperers',
                        art='whisperer', level=5, hp='4d8', ac=5, hits=1,
                        dmg='1d6', xp=100, gold='4d10', group=(1, 2),
@@ -382,12 +411,19 @@ rules.MONSTERS.update({
                        range=True, shoots='fires its cannon at',
                        tags=['machine'], special=['breath:2d6:30'],
                        breath_msg='belches a sheet of flame!'),
+    'captain':    dict(name='Captain Varga', plural='Captain Vargas',
+                       unique=True, art='captain', level=7, hp='10d10+20',
+                       ac=3, acts=2, hits=1, dmg='1d10+2', xp=450,
+                       gold='10d10', tags=['hollowed'],
+                       special=['paralyze:15']),
     'matriarch':  dict(name='Brood Matriarch', plural='Brood Matriarchs',
                        unique=True, art='matriarch', level=12,
                        hp='20d10+130', ac=-2, acts=2, hits=2, dmg='2d8+3',
                        xp=3000, gold='0', tags=['xenos'],
                        special=['breath:4d6:35', 'paralyze:12'],
-                       breath_msg='lets out a psychic shriek!'),
+                       breath_msg='lets out a psychic shriek!',
+                       breath_colour='#d040ff',
+                       breath_hurt='%s reels, taking %d.'),
 })
 
 KITS = {
@@ -519,9 +555,9 @@ SHIP = dict(
     map=[
         "################",
         "################",
-        "###C###A###R####",
+        "###C###A###R#e##",
         "#s.............X",
-        "#####I###B######",
+        "##w##I###B######",
         "################",
     ],
     legend={
@@ -579,6 +615,67 @@ SHIP = dict(
         'X': dict(solid=True, wall='vow_airlock', goto=['deck1', 1, 1, 2],
                   ask='The airlock cycles. Cross over into the '
                       'Benediction?'),
+        'e': dict(sprite='novice', block=True, talk=dict(
+            id='edda', name='Novice Edda', art='edda_face',
+            greeting='A young novice of the Vigil looks up from her '
+                     'prayers. "Brothers! Have you seen her? The SAINT? Is '
+                     'she really aboard?"',
+            topics={
+                'name': '"Edda. A novice. I tend the shrine, and I pray '
+                        'for the squads."',
+                'job': '"I keep the candles lit before Saint ORSOLYA. And '
+                       'I know her VOW by heart."',
+                'saint': '"Orsolya of the Burning Hand. She held the Kessa '
+                         'gate alone for a day and a night."',
+                'orsolya': '"Her relics are her HAND, her LITANY and her '
+                           'HEART. Bring them home."',
+                'vow': '"\'Where I stand, the dark shall not pass. My hand '
+                       'is fire, my heart is iron, my faith is the wall.\' '
+                       'Every novice learns it."',
+                'hand': '"Her gauntlet. They say it burns anything unclean '
+                        'it touches."',
+                'heart': '"It is said to beat still, inside its '
+                         'reliquary."',
+                'litany': {'needs': 'litany', 'gives': 'medal',
+                           'text': '"Her Litany! May I... may I touch it?" '
+                                   'She weeps over the brass cover. "Take '
+                                   'my medal. It is the only thing I own '
+                                   'that she would want you to have."',
+                           'refuse': '"Her prayer book. It lies in a vault '
+                                     'in the nave, they say."'},
+            },
+            unknown='"I don\'t know, brother. I only know the Saint."',
+            bye='"She watches over you."')),
+        'w': dict(sprite='shipwright', block=True, talk=dict(
+            id='corra', name='Shipwright Corra', art='corra_face',
+            greeting='The shipwright wipes her hands on a rag. "You\'re '
+                     'going over to the WRECK? Ask me about her. I\'ve '
+                     'read every plan we have."',
+            topics={
+                'name': '"Corra. I keep the Vow flying."',
+                'job': '"Shipwright. I know how a ship\'s put together, and '
+                       'the Benediction\'s an old one: cargo DECKS, NAVE, '
+                       'and the engines at her heart."',
+                'wreck': '"Cathedral-ship, Kessa crusade pattern. Three '
+                         'DECKS, joined by LIFTS. And there\'s a second '
+                         'ship docked to her: the PILGRIMS\' transport."',
+                'decks': '"The cargo decks first, then the nave above, then '
+                         'the heart. The lifts are keyed: a red KEYCARD for '
+                         'the first."',
+                'lifts': '"Keyed lifts, every one. Find the cards."',
+                'keycard': '"Your Brother Tavik\'s squad had a red one. Look '
+                           'where they fell."',
+                'pilgrims': '"The Mercy of Kessa. Docked at the east '
+                            'AIRLOCK of the cargo deck. No one\'s come out '
+                            'of her."',
+                'airlock': '"East wall of the cargo deck, halfway along. '
+                           'Mind yourselves in there."',
+                'hatch': '"Maintenance hatches look like bulkheads. Your '
+                         'Techwright can find them, or just walk into the '
+                         'walls."',
+            },
+            unknown='"Not on any plan I\'ve seen."',
+            bye='"Bring my brothers back in one piece."')),
         's': dict(sprite='saint', once=True, title='The Shrine',
                   msg='A statue of Saint Orsolya, her raised hand '
                       'wreathed in fire. Someone has left a candle at her '
@@ -611,11 +708,11 @@ DECK1 = dict(
         "#.##.#.####.#.####.#",
         "#.#a.#.#..#.#.#..#.#",
         "#.####.#..#...#x.#.#",
-        "#......#.######.##.#",
+        "#......#.#i####.##.#",
         "###.####.#.....m#..#",
         "#...#....#.#.#.#...#",
         "#.###.####.#.#.#.#.#",
-        "#.....#....#.#...#.#",
+        "#.....#....#.#...#.P",
         "#####.#.####.#####.#",
         "#c..#.#....#.#.....#",
         "#.#.#.####.#.#.#####",
@@ -680,6 +777,40 @@ DECK1 = dict(
                            'the touch: the Burning Hand of Saint '
                            'Orsolya.'),
         '=': dict(solid=True, door='locked', key='redcard'),
+        'i': dict(sprite='pilgrim', block=True, unless='ilse_safe',
+                  sprite_after=None, talk=dict(
+            id='ilse', name='Ilse, a pilgrim', art='ilse_face',
+            greeting='A pilgrim woman huddles in a maintenance alcove, '
+                     'clutching a lamp. "You\'re real. You\'re REAL. '
+                     'Please, my brother TOMAS is still on the MERCY."',
+            topics={
+                'name': '"Ilse. We came on the pilgrim ship, the MERCY. '
+                        'We came to see the Saint."',
+                'job': '"I was a weaver, on Kessa. Now I hide."',
+                'mercy': '"The Mercy of Kessa. Her AIRLOCK is in the east '
+                         'wall, near here. The CAPTAIN changed first. Then '
+                         'everyone else."',
+                'airlock': '"Down the corridor and east. Please hurry."',
+                'captain': '"Captain Varga. Something grew on him. He locked '
+                           'himself in his cabin and the singing started."',
+                'tomas': {'needs': 'tomasicon', 'takes': 'tomasicon',
+                          'gives': 'medipack', 'gold': 150,
+                          'flag': 'ilse_safe',
+                          'text': 'Ilse takes the little icon and holds it a '
+                                  'long time. "He wore it always. Thank '
+                                  'you for bringing him back to me." She '
+                                  'presses her savings and her medi-pack '
+                                  'on you, and slips away toward the Vow\'s '
+                                  'airlock.',
+                          'refuse': '"He was hiding in the cargo hold of the '
+                                    'MERCY. He wears a little brass icon '
+                                    'of the Saint. Please find him."'},
+            },
+            unknown='"I don\'t know. I don\'t know anything any more."',
+            bye='"Please. Tomas."')),
+        'P': dict(solid=True, wall='mercy_airlock', goto=['mercy', 1, 1, 1],
+                  ask='The airlock of the pilgrim ship Mercy of Kessa. '
+                      'Board her?'),
         '>': dict(floor='@stairs', goto=['deck2', 18, 1, 3],
                   ask='A cargo lift. Ride it up to the nave?'),
     },
@@ -881,7 +1012,71 @@ DECK3 = dict(
     },
 )
 
-LEVELS = {'ship': SHIP, 'deck1': DECK1, 'deck2': DECK2, 'deck3': DECK3}
+# --------------------------------------- the Mercy of Kessa (optional)
+
+MERCY = dict(
+    name='The Mercy of Kessa',
+    depth=1,
+    music='wreck',
+    theme=dict(wall='pilgrim_wall', door='pilgrim_door',
+               locked='pilgrim_locked', floor='pilgrim_floor',
+               ceil='vow_ceil', ambient=1.6,
+               variants=[('pilgrim_shrine', 0.1), ('wreck_pipes', 0.08)]),
+    rate=0.06,
+    encounters=[
+        (5, [('thrall', 3, 6)]),
+        (3, [('choir', 2, 4)]),
+        (2, [('broodling', 4, 8)]),
+        (2, [('stalker', 1, 2), ('thrall', 2, 3)]),
+    ],
+    map=[
+        "################",
+        "#<.....#.......#",
+        "#.####.#.#####.#",
+        "#.#..#...#...#.#",
+        "#.#.##.###.#.#.#",
+        "#...#..#...#...#",
+        "###.#.##.#####.#",
+        "#...#.#..#.c.#.#",
+        "#.###.#.##.#.#.#",
+        "#......t...#...#",
+        "######.#####.#=#",
+        "#......#.....#C#",
+        "################",
+    ],
+    legend={
+        '<': dict(sprite='lift', goto=['deck1', 18, 9, 3], once=True,
+                  title='The Mercy of Kessa',
+                  ask='The airlock back to the Benediction. Cross over?',
+                  msg='The pilgrims\' ship is warm, and smells of incense '
+                      'and rot. Prayer strips flutter on every bulkhead. '
+                      'Somewhere ahead, many voices are singing the same '
+                      'note.'),
+        't': dict(sprite='fallen', item='tomasicon', once=True,
+                  title='A young pilgrim',
+                  msg='A young man lies behind a cargo crate, very still. '
+                      'He died hiding. Around his neck, on a chain, is a '
+                      'little brass icon of the Saint.',
+                  item_msg="You take Tomas's icon, for his sister."),
+        'c': dict(sprite='crate', sprite_open='crate',
+                  chest=dict(gold='4d10+30', items=['frag', 'medipack'],
+                             look='A pilgrims\' supply crate.')),
+        '=': dict(solid=True, door='locked', key=''),
+        'C': dict(fight=[('captain', 1), ('thrall', 4)], flag='captain',
+                  item='mercyshield', run=False,
+                  fight_msg='Captain Varga stands in his cabin in his dress '
+                            'uniform. Half his face is chitin now, and his '
+                            'crew kneel around him, singing. "Welcome '
+                            'aboard," he says. "The Mother is waiting."',
+                  after='The singing stops. The Mercy of Kessa is quiet at '
+                        'last.',
+                  item_msg="On the captain's wall hangs a golden shield: the "
+                           "ship's sigil, the Shield of the Mercy."),
+    },
+)
+
+LEVELS = {'ship': SHIP, 'deck1': DECK1, 'deck2': DECK2, 'deck3': DECK3,
+          'mercy': MERCY}
 
 HINTS = [
     ('redcard', '"Brother Tavik\'s squad reported that the lift to the '

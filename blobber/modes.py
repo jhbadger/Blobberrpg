@@ -14,7 +14,8 @@ from .rules import (ITEMS, SPELLS, SLOTS, STAT_NAMES, STATS, xp_for, bonus,
 from .world import DIRS
 
 HELP = """Walk: arrow keys or W A S D (Q and E step sideways).
-Enter or Space: deal with what's in front of you (doors, shops) or here.
+Enter or Space: deal with what's in front of you (doors, shops, people)
+or here.
 C: %s.   1-6: a character's sheet (items, equipment).
 M: the map.   F: search for hidden doors.
 Esc: the game menu (save, sound, quit).   ?: this help.
@@ -209,6 +210,9 @@ class ExploreMode(Mode):
     def interact(self, g):
         x, y = g.ahead(1)
         sq = g.level.sq(x, y)
+        if g.active(sq).get('talk'):
+            g.bump(x, y, g.active(sq), g.st.facing)
+            return
         if sq.get('solid') and (sq.get('shop') or sq.get('door') or
                                 sq.get('goto') or sq.get('riddle') or
                                 sq.get('hook') or sq.get('msg_bump')):
@@ -380,6 +384,8 @@ class MapMode(Mode):
                 elif sq.get('goto'):
                     mark = ('>' if sq.get('stairs') != 'up' else '<',
                             rgb('#80c0ff'))
+                elif g.active(sq).get('talk'):
+                    mark = ('@', rgb('#ff90c0'))
                 elif sq.get('chest') and not g.flag(g.sqkey(x, y, ':chest')):
                     mark = ('c', rgb('#ffd860'))
                 elif sq.get('fountain'):
@@ -403,6 +409,7 @@ class MapMode(Mode):
                  ('You are facing %s.' % ['north', 'east', 'south',
                                           'west'][st.facing], INK), ('', None),
                  ('+ door    $ shop', INK_DIM), ('< > stairs   c chest', INK_DIM),
+                 ('@ someone to talk to', INK_DIM),
                  ('f fountain   . writing', INK_DIM), ('', None),
                  ('Press any key.', INK_DIM)]
         y = TY

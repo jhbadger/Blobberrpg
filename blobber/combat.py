@@ -20,6 +20,18 @@ COMBAT_EFFECTS = ('damage', 'heal', 'cure', 'ward', 'bless', 'sleep', 'turn',
                   'smite')
 
 
+# the colour a spell washes the view with, by what it does, unless the
+# spell names its own 'colour'
+EFFECT_COLOURS = {'damage': '#ff8030', 'smite': '#ffe060', 'heal': '#70ff90',
+                  'cure': '#a0ffe0', 'raise': '#ffffff', 'ward': '#90b0ff',
+                  'bless': '#ffe070', 'sleep': '#b080ff', 'turn': '#fff4c0'}
+
+
+def spell_colour(sp):
+    return sp.get('colour') or EFFECT_COLOURS.get(sp.get('effect'),
+                                                  '#c0a0ff')
+
+
 def a_(name):
     return ('an ' if name[0].lower() in 'aeiou' else 'a ') + name
 
@@ -378,7 +390,7 @@ class CombatMode(Mode):
                 return
             c.sp -= sp['sp']
             beats.append(('%s %s %s!' % (c.name, w('casts'), sp['name']),
-                          ('sound', 'spell')))
+                          ('spell', spell_colour(sp))))
             beats.append(('', self.snap(g, i)))
             if g.antimagic():
                 beats.append((w('fizzle_fight'), None))
@@ -407,7 +419,7 @@ class CombatMode(Mode):
                 sp = SPELLS[it['spell']]
                 beats.append(('%s %s the %s!' % (
                     c.name, it.get('verb', 'uses'), it['name']),
-                              ('sound', 'spell')))
+                              ('spell', spell_colour(sp))))
                 self.apply_spell(g, c, sp, o[2], beats, 5)
 
     def area_attack(self, g, c, weapon, grp, gi, beats):
@@ -420,7 +432,8 @@ class CombatMode(Mode):
                 return
             g.st.supplies[weapon['ammo']] -= 1
         beats.append(('%s %s the %s!' % (c.name, weapon.get('verb', 'hits'),
-                                          grp.m['plural']), ('sound', 'trap')))
+                                          grp.m['plural']),
+                      ('spell', weapon.get('colour', '#ff7020'), 'trap')))
         for f in list(grp.alive):
             r = rng.randint(1, 20)
             th = c.to_hit() + self.bless + bonus(c.dx) - bonus(c.st)
@@ -555,14 +568,15 @@ class CombatMode(Mode):
             if parts[0] == 'breath' and rng.randint(1, 100) <= int(parts[2]):
                 beats.append(('The %s %s' % (name, m.get('breath_msg',
                                                          w('breath'))),
-                              ('sound', 'trap')))
+                              ('spell', m.get('breath_colour', '#ff6020'),
+                               'trap')))
                 for i in living:
                     c = g.party[i]
                     dmg = roll(parts[1], rng)
                     if rng.randint(1, 20) <= c.dx:
                         dmg //= 2
-                    self.hurt(g, i, dmg, beats, '%s is burned for %d.'
-                              % (c.name, dmg))
+                    self.hurt(g, i, dmg, beats,
+                              m.get('breath_hurt', w('burned')) % (c.name, dmg))
                 return
             if parts[0] == 'cast' and rng.randint(1, 100) <= int(parts[2]):
                 sp = SPELLS[parts[1]]
@@ -571,7 +585,7 @@ class CombatMode(Mode):
                 dmg = roll(sp.get('dice', '2d6'), rng) + m['level']
                 beats.append(('The %s %s %s!' % (name, w('casts'),
                                                   sp['name']),
-                              ('sound', 'spell')))
+                              ('spell', spell_colour(sp))))
                 self.hurt(g, i, dmg, beats, '%s takes %d damage.'
                           % (c.name, dmg))
                 return
@@ -647,7 +661,8 @@ class CombatMode(Mode):
             if fx:
                 kind = fx[0]
                 if kind == 'foe':
-                    g.view_flash = 0.12
+                    if g.view_flash <= 0:
+                        g.flash(None, 0.12)
                     g.sound.play('hit')
                 elif kind == 'miss':
                     g.sound.play('miss')
@@ -661,6 +676,9 @@ class CombatMode(Mode):
                     self.gone.add(fx[1])
                 elif kind == 'sound':
                     g.sound.play(fx[1])
+                elif kind == 'spell':
+                    g.flash(fx[1], 0.35)
+                    g.sound.play(fx[2] if len(fx) > 2 else 'spell')
             if text:
                 self.shown.append(text)
                 g.dirty = True

@@ -48,6 +48,12 @@ unmade.
   doors, a riddle door, magical darkness, a spinner, teleport traps, pits,
   a place where magic dies, fountains, chests (some trapped), guardians
   and a final battle.
+- **People to talk to**: Old Tam and Wenna the gravedigger in the streets,
+  the ghost of Warden Hobb in the Undercroft, and Nim the grave robber,
+  caged by ghouls in the Catacombs.
+- **The Old Mine**, through a shaft in the town wall: an optional level
+  of kobolds, spiders and slimes, where the ghost of Brokk the dwarf
+  wants his rune-hammer back from the Kobold King.
 
 ## Benediction
 
@@ -80,6 +86,11 @@ Heart.
   spitters, brood guards, ravagers, whisperers, an Iron Warden still
   guarding the Saint's reliquary, and the Brood Matriarch.
 
+- **People to talk to**: Novice Edda and Shipwright Corra aboard the Vow,
+  and Ilse, a pilgrim hiding on the cargo deck.
+- **The Mercy of Kessa**, the pilgrims' ship docked to the wreck: an
+  optional level, Ilse's brother, and Captain Varga, hollowed by the Brood.
+
 It's entirely the engine with the game's own words, rules, art and music.
 The engine itself wasn't forked to make it.
 
@@ -88,7 +99,7 @@ The engine itself wasn't forked to make it.
 | Key | |
 | --- | --- |
 | Arrows or W A S D | walk and turn (Q and E step sideways) |
-| Enter or Space | deal with what's ahead or here: doors, shops, chests |
+| Enter or Space | deal with what's ahead or here: doors, shops, people, chests |
 | C | cast a spell |
 | 1 to 6 | a character's sheet: equip, use, trade and drop items |
 | M | the map |
@@ -137,6 +148,11 @@ script does. For sound, install `pyjnius` (Android's own player) or
 `pygame` (SDL's mixer) from Pydroid's pip; without either the game is
 silent.
 
+Walk into someone, or press Enter facing them, to talk. As in the
+tilerpgs, ask about NAME, JOB or anything you type; words in CAPITALS in
+what they say join the list of things to ask about. Some people want
+something, and give something back.
+
 In a fight the party chooses to fight or run. Each character then gets an
 order (attack, defend, cast or use an item) and the round plays out a line
 at a time. Only the first three in the marching order can fight hand to
@@ -167,6 +183,7 @@ outside a fight, and the title screen can load them too.
 | `modes.py` | title, exploring, map, character sheet, game over, ending |
 | `combat.py` | fights |
 | `town.py` | Guild, shop, temple, inn and sage |
+| `talk.py` | people to talk to, by keyword |
 | `sound.py` | synthesized sound effects and the music player (afplay, paplay/aplay, Android's MediaPlayer through pyjnius, pygame's mixer, or winsound) |
 | `music.py` | chiptune tunes in the tilerpgs' notation, and their synthesizer |
 | `words.py` | every word the engine puts on screen, which a game can change |
@@ -189,8 +206,9 @@ wall is a few cached byte copies, so a step takes about a millisecond.
 
 A game is a script that defines a handful of names and calls
 `blobber.run()`. See `ashencrypt` for a complete one. `benediction` shows a
-game that replaces the whole fantasy ruleset, and keeps its art in a
-module beside it (`benediction_art.py`).
+game that replaces the whole fantasy ruleset. Both keep their own art in
+a module beside the script (`ashencrypt_art.py`, `benediction_art.py`),
+which the app builders pack along with it.
 
 - `ID`, `TITLE`, `SUBTITLE`, `TITLE_ART`, `ICON` (a picture), `INTRO`
   (pages), `WELCOME`, `DEATH`
@@ -258,8 +276,14 @@ A legend entry is a dict. The keys, all documented in `world.py`, include
 `solid`, `wall`, `floor`, `ceil`, `sprite`, `door` (`True` or
 `'locked'`) with `key`, `secret`, `riddle`, `goto` (stairs and portals),
 `msg`, `fight`, `chest`, `item`, `fountain`, `trap`, `spin`, `teleport`,
-`dark`, `antimagic`, `shop`, `hook`, `requires` and `unless` (switch a
-square on or off by a flag).
+`dark`, `antimagic`, `shop`, `hook`, `talk` with `block` (someone standing
+there; see `blobber/talk.py`), `requires` and `unless` (switch a square on
+or off by a flag).
+
+A spell or item can name the `colour` it washes the view with when it's
+used; otherwise the colour follows what it does (fire orange, healing
+green, holy gold). A monster's breath can name its `breath_colour` and
+`breath_hurt` ("%s is splashed for %d.").
 
 New textures and pictures are functions registered with
 `@textures.texture('name')` and `@art.picture('name', w, h, height)`.

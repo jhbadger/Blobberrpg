@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import blobber                                         # noqa: E402
 from blobber import rules                              # noqa: E402
+import ashencrypt_art                                  # noqa: E402,F401
 
 ID = 'ashencrypt'
 TITLE = 'The Ashen Crypt'
@@ -96,9 +97,25 @@ rules.ITEMS.update({
     'elvenmail':  dict(name='Elven Mail', kind='armor', ac=5, gear='light',
                        price=700, text='Elven Mail: armour +5, light as '
                                        'silk; rogues may wear it.'),
+    'brokkhammer': dict(name="Brokk's Hammer", kind='weapon', dmg='2d6+2',
+                        hit=2, gear='hammer', price=500, verb='hammers',
+                        text="Brokk's Hammer: 2d6+2, +2 to hit. Rune-forged "
+                             "by a dwarf of the Old Mine."),
+    'minerhelm':  dict(name="Miner's Helm", kind='helm', ac=2, price=150),
+    'runering':   dict(name='Rune Ring', kind='ring', ac=3, price=900,
+                       text='Rune Ring: armour +3. Dwarf-work.'),
 })
 
 rules.MONSTERS.update({
+    'koboldshaman': dict(name='Kobold Shaman', plural='Kobold Shamans',
+                         art='kobold', level=3, hp='3d6', ac=7, hits=1,
+                         dmg='1d4', xp=35, gold='3d8', group=(1, 2),
+                         range=True, shoots='hurls a stone at',
+                         special=['cast:ARBO:40']),
+    'koboldking': dict(name='Kobold King', plural='Kobold Kings', unique=True,
+                       art='koboldking', level=6, hp='10d10+10', ac=3,
+                       acts=2, hits=1, dmg='1d10+2', xp=500, gold='10d10',
+                       special=['cast:FLAM:20']),
     'ghoullord': dict(name='Ghoul Lord', plural='Ghoul Lords', art='ghoul',
                       level=6, hp='8d8+8', ac=3, hits=3, dmg='1d6+2', xp=200,
                       gold='6d10', tags=['undead'], special=['paralyze:20']),
@@ -114,6 +131,8 @@ rules.MONSTERS.update({
                       acts=2, hits=2, dmg='2d8+4', xp=3000, gold='0',
                       tags=['undead'],
                       special=['breath:4d6:35', 'drain:15'],
+                      breath_colour='#60ff60',
+                      breath_hurt='%s is seared for %d.',
                       breath_msg='raises his staff, and ash-fire rains '
                                  'down!'),
 })
@@ -133,11 +152,11 @@ TOWN = dict(
         "%...............l%",
         "%.##.##...##.###.%",
         "%.#I.##.f.##.#P#.%",
-        "%.##......t......%",
-        "%....##.....###..%",
+        "%.##g.....t......%",
+        "%....##.....###.T%",
         "%l...#W.....#....%",
         "%t........l.....t%",
-        "%%%%%%%%%%%%%%%%%%",
+        "%%%%%%%%%%%%%M%%%%",
     ],
     legend={
         '%': dict(solid=True, wall='citywall'),
@@ -197,6 +216,60 @@ TOWN = dict(
                       'beneath the old chapel?'),
         't': dict(sprite='tree'),
         'l': dict(sprite='lamppost'),
+        'M': dict(solid=True, wall='mine_gate', goto=['mine', 1, 1, 2],
+                  ask='A timber-framed shaft in the town wall: the Old Mine, '
+                      'closed these forty years. Go down?'),
+        'T': dict(sprite='townsman', block=True, talk=dict(
+            id='tam', name='Old Tam', art='tam_face',
+            greeting='An old man leans on his staff. "Off to the CRYPT, '
+                     'are you? I knew a lad went down there. Ask me '
+                     'anything, I\'ve nothing but time."',
+            topics={
+                'name': '"Tam. Just Tam. I worked the MINE, before."',
+                'job': '"Job? I\'m retired. I sit. I watch the ASH fall."',
+                'crypt': '"Morvane\'s tomb, under the chapel. The saints '
+                         'put him there. Ask the SAGE, he knows the old '
+                         'tales."',
+                'ash': '"Every night now. Smells of burning hair. My '
+                       'grandmother walked past the churchyard wall last '
+                       'week, and she\'s been dead twenty years."',
+                'mine': '"The Old Mine, through the shaft in the south wall. '
+                        'Kobolds took it, forty years back, and killed '
+                        'BROKK the dwarf, our foreman. His HAMMER\'s still '
+                        'down there, they say."',
+                'brokk': '"Best dwarf I ever knew. They say his ghost walks '
+                         'the mine yet, looking for his hammer."',
+                'hammer': '"Rune-forged, it was. If you find it, take it to '
+                          'his ghost. He\'d not want it lying in kobold '
+                          'muck."',
+                'sage': '"Thessaly, in the purple tower. Expensive, but '
+                        'right."',
+            },
+            unknown='"Eh? Never heard of it."',
+            bye='"Mind the ash."')),
+        'g': dict(sprite='gravedigger', block=True, talk=dict(
+            id='wenna', name='Wenna the gravedigger', art='wenna_face',
+            greeting='A gravedigger leans on her spade. "Sixty graves open '
+                     'in the churchyard, and nothing in any of them. Want '
+                     'to know about the CATACOMBS?"',
+            topics={
+                'name': '"Wenna. I dig the graves. These days I fill them '
+                        'in again."',
+                'job': '"Gravedigger. I know every vault under that '
+                       'chapel. Ask about the CATACOMBS."',
+                'catacombs': '"The second level down. There\'s a door with '
+                             'a stone face that asks a RIDDLE, and a '
+                             'STATUE of the saint who knows the answer."',
+                'riddle': '"I\'ll not spoil it. Read what\'s carved on the '
+                          'statue, and think about walking."',
+                'statue': '"Saint Aldric, worn smooth. West side of the '
+                          'catacombs."',
+                'robber': {'text': '"Nim? A grave robber. He went down to '
+                                   'loot the catacombs and never came up. '
+                                   'Serves him right."'},
+            },
+            unknown='"Can\'t help you there."',
+            bye='"Don\'t get buried."')),
         'f': dict(sprite='fountain', once=True, title='The Fountain',
                   msg='The fountain of Saint Aldric. Coins glint in the '
                       'basin, and a film of grey ash floats on the water.'),
@@ -230,7 +303,7 @@ CRYPT1 = dict(
         "#.#.####.#.#####.###",
         "#...#....#.....#...#",
         "###.#.########.###.#",
-        "#...#.#c.....#.#...#",
+        "#...#.#c....h#.#...#",
         "#.###.#####.##.#.#.#",
         "#.....#.....#..#.#.#",
         "###+###.###.#.##.#.#",
@@ -279,6 +352,31 @@ CRYPT1 = dict(
                       'one hand.'),
         'T': dict(item='torch', item_msg='A torch lies here, still good.'),
         '=': dict(solid=True, door='locked', key='ironkey'),
+        'h': dict(sprite='ghost_warden', block=True, talk=dict(
+            id='hobb', name='The ghost of Warden Hobb', art='hobb_face',
+            greeting='A pale old man with a ring of keys at his belt flickers '
+                     'in the dark. "Living folk. It has been a long time. '
+                     'Have you come about the KEY?"',
+            topics={
+                'name': '"Hobb. I kept these cellars for the chapel. I '
+                        'keep them still, it seems."',
+                'job': '"Warden of the undercroft. I lost my KEY, and now '
+                       'the way down is shut."',
+                'key': '"The KOBOLDS took it from my bones. They come and '
+                       'go through a false WALL in the south-west."',
+                'kobolds': '"Nasty little thieves. The big one wears my key '
+                           'on a thong."',
+                'wall': '"At the end of the south hall. Walk into it, or '
+                        'search beside it."',
+                'blessing': {'needs': 'ironkey', 'gives': 'potion',
+                             'text': '"You have my key! Then take my '
+                                     'blessing, and this; I kept it for the '
+                                     'one who freed my rest."',
+                             'refuse': '"Bring me my key first, and you '
+                                       'shall have my BLESSING."'},
+            },
+            unknown='"I knew only these cellars."',
+            bye='"Walk in the light."')),
     },
 )
 
@@ -306,7 +404,7 @@ CRYPT2 = dict(
         "####################",
         "#.....#......#....<#",
         "#.###.#.####.#.###.#",
-        "#.#...#.#..#.#.#...#",
+        "#.#...#.#.n#.#.#...#",
         "#.#.###.#..#...#.###",
         "#.#.....#.##########",
         "#.#######k#...:::..#",
@@ -372,6 +470,35 @@ CRYPT2 = dict(
                        'Drink from it?'),
         'p': dict(sprite='portal', teleport=[18, 2, 2],
                   tmsg='The portal whisks you away!'),
+        'n': dict(sprite='prisoner', block=True, unless='nimfree',
+                  sprite_after=None, talk=dict(
+            id='nim', name='Nim, in a bone cage', art='nim_face',
+            greeting='A thin man rattles the bars of a cage made of '
+                     'thighbones. "Oi! Get me OUT of here and I\'ll make it '
+                     'worth your while. I know things. RIDDLE things."',
+            topics={
+                'name': '"Nim. Of no fixed abode. Currently of this cage."',
+                'job': '"I relocate valuables from people who no longer '
+                       'need them. The ghouls caught me at it."',
+                'riddle': {'cost': 20,
+                           'text': '"The stone face asks what you leave '
+                                   'more of the more you take. Footsteps, '
+                                   'friend. FOOTSTEPS."',
+                           'poor': '"Twenty gold, and it\'s yours."'},
+                'footsteps': '"That\'s the answer. You\'re welcome."',
+                'ghouls': '"They keep the BONE KEY in their bone-house, in '
+                          'the middle of the catacombs. It opens this cage '
+                          'too."',
+                'out': {'needs': 'bonekey', 'flag': 'nimfree', 'gold': 80,
+                        'text': '"The bone key! Quick, quick... I\'m out! '
+                                'Here, my last eighty gold, honestly come '
+                                'by. Mostly." He scurries off into the '
+                                'dark.',
+                        'refuse': '"The cage needs a bone key. The GHOULS '
+                                  'have one."'},
+            },
+            unknown='"Never heard of it. Get me OUT and I\'ll find out."',
+            bye='"Don\'t leave me here!"')),
     },
 )
 
@@ -476,8 +603,102 @@ CRYPT3 = dict(
     },
 )
 
+# ------------------------------------------------- the Old Mine (optional)
+
+MINE = dict(
+    name='The Old Mine',
+    depth=2,
+    theme=dict(wall='mine_wall', door='mine_door', locked='mine_locked',
+               floor='mine_floor', ceil='mine_ceil', ambient=1.3,
+               variants=[('mine_timber', 0.25), ('mine_lantern', 0.06),
+                         ('mine_ore', 0.08)]),
+    rate=0.06,
+    encounters=[
+        (4, [('kobold', 3, 6)]),
+        (2, [('koboldshaman', 1, 2), ('kobold', 2, 4)]),
+        (3, [('spider', 1, 3)]),
+        (2, [('slime', 1, 3)]),
+        (2, [('bat', 4, 8)]),
+    ],
+    map=[
+        "####################",
+        "#<..#.....#........#",
+        "#.#.#.###.#.######.#",
+        "#b#...#...#.#....#.#",
+        "###.###.###.#.##.#.#",
+        "#.....#.#...#.#..#.#",
+        "#.###.#.#.###.#.##.#",
+        "#.#o#...#.#...#....#",
+        "#.#.#####.#.###.##.#",
+        "#...^.....#...w.#..#",
+        "#####.#####.###.#=##",
+        "#..:::...#.c#...#..#",
+        "#.#####.##.##.###K.#",
+        "#.......#.......#.h#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='stairs_up', stairs='up', goto=['town', 13, 10, 0],
+                  ask='The shaft back up to Hollowmere. Climb out?',
+                  once=True, title='The Old Mine',
+                  msg='The air is cold and smells of old smoke. Rails run '
+                      'off into the dark, and something has scratched '
+                      'little pictures of crowns all over the timbers.'),
+        'b': dict(sprite='ghost_dwarf', block=True, talk=dict(
+            id='brokk', name='The ghost of Brokk', art='brokk_face',
+            greeting='A stout ghost in a leather apron glares at you. '
+                     '"Hah! Surface folk. Here for my HAMMER, are you? '
+                     'Thieves, all of you."',
+            topics={
+                'name': '"Brokk, foreman of this mine. Was, anyway, till '
+                        'the KOBOLDS stove my head in."',
+                'job': '"I dug. I forged. I died. Now I wait for my HAMMER '
+                       'to come home."',
+                'kobolds': '"Their KING has my hammer. Sits behind a locked '
+                           'door in the deep south-east, waving it about."',
+                'king': '"Fat, cunning, and he throws fire. Kill him for me '
+                        'and bring me the HAMMER."',
+                'hammer': {'needs': 'brokkhammer', 'gives': 'runering',
+                           'gold': 150,
+                           'text': '"My hammer! Oh, my beauty." The ghost '
+                                   'holds his hands over it, and for a '
+                                   'moment the runes shine. "No. Keep it. '
+                                   'Use it on things that deserve it. And '
+                                   'take my ring, and my savings; I\'ve no '
+                                   'use for them now." He smiles, and '
+                                   'fades a little.',
+                           'refuse': '"The KING has it. Bring it to me."'},
+            },
+            unknown='"Bah. I know rock, and iron, and nothing else."',
+            bye='"Mind the rails."')),
+        'o': dict(sprite='chest', chest=dict(gold='4d10+20',
+                                             items=['minerhelm'],
+                                             look='An ore cart, half full '
+                                                  'of something that '
+                                                  'glitters.')),
+        'c': dict(sprite='chest', chest=dict(gold='3d10+10',
+                                             items=['potion', 'antidote'],
+                                             trap='blast')),
+        '^': dict(trap=dict(dmg='2d6', msg='The tunnel roof gives way in a '
+                                           'shower of rock!')),
+        'w': dict(sprite='fountain', fountain='heal',
+                  look='A cold spring bubbles up through the rock. Drink?'),
+        '=': dict(solid=True, door='locked', key=''),
+        'K': dict(fight=[('koboldking', 1), ('koboldshaman', 2),
+                         ('kobold', 4)], flag='koboldking', item='brokkhammer',
+                  fight_msg='A throne of mine carts and stolen candlesticks. '
+                            'On it squats a fat kobold in a tin crown, '
+                            'waving a rune-carved hammer. "MINE!" it '
+                            'shrieks. "ALL MINE!"',
+                  item_msg="The Kobold King drops Brokk's Hammer."),
+        'h': dict(sprite='chest', chest=dict(gold='10d10+40',
+                                             items=['potion', 'potion'],
+                                             look="The Kobold King's hoard.")),
+    },
+)
+
 LEVELS = {'town': TOWN, 'crypt1': CRYPT1, 'crypt2': CRYPT2,
-          'crypt3': CRYPT3}
+          'crypt3': CRYPT3, 'mine': MINE}
 
 # ------------------------------------------------------- the sage's counsel
 

@@ -50,6 +50,7 @@ DEFAULTS = {
     'turn_fail':    'The %s stand firm.',
     'turn_wrong':   'The %s are unaffected.',
     'breath':       'breathes fire!',
+    'burned':       '%s is burned for %d.',
     'shoots':       'shoots at',        # a monster's ranged attack
     'melee_miss':   '%s swings at %s and misses.',
     'shot_miss':    '%s fires at %s and misses.',

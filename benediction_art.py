@@ -8,7 +8,7 @@ import random
 
 from blobber import textures as tx
 from blobber.textures import texture, T, fbm, overlay, glow_at
-from blobber.art import picture, eye, skull, person
+from blobber.art import picture, eye, skull, person, standing
 from blobber.paint import Painter
 from blobber.gfx import rgb, mix, scale
 
@@ -1182,3 +1182,161 @@ def _p(p):
     p.circle(72, 62, 5, 'eyegreen', lum=0.8)
     p.limb(62, 70, 46, 90, 1.5, 1.5, 'brass')
     p.rect(112, 112, 30, 22, 'white', lum=0.7)
+
+
+# ------------------------------------------- the pilgrim ship Mercy of Kessa
+
+def _pilgrim(seed=701):
+    px = plates(seed, '#9a8e78', '#2a241c', cols=(32, 32), rows=(36, 28),
+                grime=0.4, rust='#6a3a18')
+    rng = random.Random(seed)
+    # prayer strips pasted on the bulkheads
+    for k in range(3):
+        x0 = rng.randint(4, 50)
+        y0 = rng.randint(4, 20)
+        for y in range(y0, y0 + rng.randint(16, 30)):
+            for x in range(x0, x0 + 6):
+                if y < T:
+                    px[y * T + x] = mix('#e8dcb8', '#a89870', rng.random() * 0.4)
+        for y in range(y0 + 2, min(T, y0 + 26), 3):
+            for x in range(x0 + 1, x0 + 5):
+                if rng.random() < 0.6 and y < T:
+                    px[y * T + x] = rgb('#3a2a1a')
+    for x in range(T):
+        for y in (58, 59):
+            px[y * T + x] = rgb('#8a1a14')
+    return px
+
+
+@texture('pilgrim_wall')
+def _t():
+    return _pilgrim()
+
+
+@texture('pilgrim_shrine')
+def _t():
+    px = _pilgrim(702)
+    p = P(41)
+    p.rect(18, 10, 28, 36, 'shadow', lum=0.1)
+    p.ellipse(32, 26, 8, 10, 'gold', bias=0.1)
+    p.rect(28, 30, 8, 14, 'white', lum=0.75)
+    for x in (20, 26, 38, 44):
+        p.rect(x - 1, 40, 2.5, 6, 'white', lum=0.85)
+        p.ellipse(x, 38, 1.2, 2, 'flame', lum=0.95)
+    p.glow.add('flame')
+    out = overlay(px, p)
+    glow_at(out, 32, 36, 22, '#ffb050', 0.3)
+    return out
+
+
+@texture('pilgrim_door')
+def _t():
+    return bulkhead_door(_pilgrim(703), hazard=False, seed=42)
+
+
+@texture('pilgrim_locked')
+def _t():
+    return bulkhead_door(_pilgrim(704), hazard=False, locked=True, seed=43)
+
+
+@texture('pilgrim_floor')
+def _t():
+    px = list(tx.get('vow_floor'))
+    rng = random.Random(44)
+    for y in range(T):
+        for x in range(14, 50):
+            edge = x in (14, 15, 48, 49)
+            c = '#c8a040' if edge else '#7a1a18'
+            px[y * T + x] = scale(c, 0.75 + 0.35 * rng.random())
+    return px
+
+
+@texture('mercy_airlock')
+def _t():
+    px = _wreck(705)
+    stripes(px, 0, 6)
+    p = P(45)
+    p.circle(32, 34, 22, 'iron', bias=0.05)
+    p.circle(32, 34, 17, 'shadow', lum=0.1)
+    p.rect(20, 30, 24, 8, 'gold', lum=0.6)
+    p.circle(32, 10, 2.5, 'eyegold', lum=0.9)
+    return overlay(px, p)
+
+
+# ------------------------------------------------------------ the people
+
+@picture('novice', 48, 124, height=0.6)
+def _p(p):
+    mats(p)
+    standing(p, 24, 'white', hair='blond', hood=False)
+    p.rect(20, 50, 8, 3, 'crimson', lum=0.6)
+    p.rect(22.5, 46, 3, 12, 'crimson', lum=0.6)
+
+
+@picture('shipwright', 48, 124, height=0.62)
+def _p(p):
+    mats(p)
+    standing(p, 24, 'iron', skin='darkskin', hair='black', apron='leather')
+    p.rect(30, 62, 12, 6, 'brass', lum=0.6)
+
+
+@picture('pilgrim', 48, 124, height=0.6)
+def _p(p):
+    mats(p)
+    standing(p, 24, 'cloth', hood=True)
+    p.circle(24, 60, 3, 'brass')
+
+
+@picture('edda_face')
+def _p(p):
+    mats(p)
+    person(p, robe='white', trim='crimson', hair='blond', eyes='blue')
+
+
+@picture('corra_face')
+def _p(p):
+    mats(p)
+    person(p, skin='darkskin', robe='iron', trim=None, apron='leather',
+           hair='black', eyes='leaf')
+    p.circle(70, 62, 6, 'brass')
+    p.circle(70, 62, 4, 'eyegold', lum=0.8)
+
+
+@picture('ilse_face')
+def _p(p):
+    mats(p)
+    person(p, robe='cloth', trim=None, hood=True, eyes='leaf')
+    p.circle(80, 124, 6, 'brass')
+
+
+@picture('captain', 160, 160)
+def _p(p):
+    mats(p)
+    for s in (-1, 1):
+        p.limb(80 + s * 12, 108, 80 + s * 14, 134, 9, 8, 'black')
+        p.limb(80 + s * 14, 134, 80 + s * 13, 152, 8, 7, 'leather')
+        p.ellipse(80 + s * 14, 154, 10, 4, 'leather')
+    p.poly([(52, 50), (108, 50), (114, 130), (46, 130)], 'crimson', lum=0.45,
+           gradx=-0.3, tex=0.06)
+    for k in range(4):
+        p.circle(72, 62 + k * 10, 2, 'brass', lum=0.8)
+        p.circle(88, 62 + k * 10, 2, 'brass', lum=0.8)
+    for s in (-1, 1):
+        p.ellipse(80 + s * 30, 54, 14, 8, 'brass', tex=0.05)
+    p.ellipse(100, 84, 18, 26, 'chitin', tex=0.12)
+    for k in range(3):
+        p.circle(96 + k * 5, 78 + k * 7, 3, 'teal', lum=0.7)
+    p.chain([(56, 56), (44, 82), (48, 104)], 8, 6, 'crimson')
+    p.circle(48, 108, 6, 'paleskin')
+    p.line(46, 108, 30, 140, 'steel', 0.8, 3)
+    p.chain([(106, 56), (126, 74), (140, 66)], 9, 7, 'chitin')
+    p.chain([(140, 66), (152, 44), (154, 22)], 6, 1.5, 'bone')
+    p.limb(80, 44, 80, 52, 7, 7, 'paleskin')
+    p.ellipse(80, 32, 16, 18, 'paleskin', tex=0.1)
+    p.ellipse(90, 26, 10, 12, 'chitin', tex=0.1)
+    p.rect(62, 12, 36, 8, 'black', lum=0.4)
+    p.rect(58, 18, 44, 4, 'black', lum=0.3)
+    p.circle(80, 15, 3, 'brass')
+    eye(p, 73, 32, 2.6, 'teal')
+    eye(p, 87, 34, 2.2, 'teal')
+    p.ellipse(78, 44, 6, 3, 'mouth', lum=0.3)

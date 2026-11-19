@@ -187,6 +187,10 @@ def selftest(gdef):
                         sq.get('stock', []):
                     if iid not in ITEMS:
                         problems.append('%s: no item %r' % (lid, iid))
+                if sq.get('talk'):
+                    from .talk import check as check_talk
+                    problems += ['%s: %s' % (lid, p) for p in
+                                 check_talk(sq['talk'], art.names(), ITEMS)]
                 if sq.get('key') and sq['key'] not in ITEMS:
                     problems.append('%s: no key item %r' % (lid, sq['key']))
         for w, groups in L.encounters:
@@ -215,6 +219,8 @@ def selftest(gdef):
                 for dx, dy in DIRS:
                     nx, ny = x + dx, y + dy
                     sq = L.sq(nx, ny)
+                    if sq.get('block'):
+                        continue
                     if not sq.get('solid'):
                         if (nx, ny) not in seen:
                             seen.add((nx, ny))
@@ -234,7 +240,7 @@ def selftest(gdef):
                 for x in range(L.w):
                     sq = L.sq(x, y)
                     if not sq.get('solid') and (x, y) not in seen and \
-                            L.char(x, y) != ' ':
+                            L.char(x, y) != ' ' and not sq.get('block'):
                         problems.append('%s: %d,%d (%r) cannot be reached'
                                         % (lid, x, y, L.char(x, y)))
     from . import music

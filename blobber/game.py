@@ -345,6 +345,7 @@ class Game:
         self.flash_rows = {}        # roster row -> time left
         self.view_flash = 0.0
         self.roster_override = None
+        self.view_flash_col = None
         self.clock = 0.0
         self.warm = None            # a generator preparing the view
         self.warmed_for = None
@@ -861,8 +862,11 @@ class Game:
         m = self.mode
         m.draw(self, s)
         if self.view_flash > 0:
-            s.translate(VX, VY, VW, VH, bytes(min(255, i + 90)
-                                                for i in range(256)))
+            if self.view_flash_col is None:
+                s.translate(VX, VY, VW, VH, bytes(min(255, i + 90)
+                                                    for i in range(256)))
+            else:
+                self.wash(s, self.view_flash_col)
         if not getattr(m, 'full', False) and self.chrome['ornament']:
             orn = art.get(self.chrome['ornament'])
             s.blit(orn, VX + VW // 2 - orn.w // 2, 0)
@@ -979,6 +983,22 @@ class Game:
         if self.modes:
             self.mode.update(self, dt)
 
+    def flash(self, colour=None, t=0.15):
+        """Flash the view: brighter (colour None), or washed with a
+        colour, as a spell is cast."""
+        self.view_flash = t
+        self.view_flash_col = rgb(colour) if colour else None
+
+    def wash(self, s, c):
+        """Every other pixel of the view, in a checkerboard, set to c."""
+        buf = s.buf
+        n = VW // 2
+        for y in range(VY, VY + VH):
+            start = (y * W + VX + (y & 1)) * 3
+            end = start + n * 6
+            for ch in range(3):
+                buf[start + ch:end:6] = bytes((c[ch],)) * n
+
     def hurt_flash(self, i):
         self.flash_rows[i] = 0.25
 
@@ -1024,8 +1044,8 @@ class Game:
         dx, dy = DIRS[d]
         nx, ny = st.x + dx, st.y + dy
         sq = L.sq(nx, ny)
-        if sq.get('solid'):
-            self.bump(nx, ny, sq, d)
+        if sq.get('solid') or self.active(sq).get('block'):
+            self.bump(nx, ny, self.active(sq), d)
             return
         self.move_to(nx, ny)
 
@@ -1055,6 +1075,13 @@ class Game:
         self.after_step()
 
     def bump(self, x, y, sq, d):
+        if sq.get('talk'):
+            from .talk import talk
+            talk(self, sq)
+            return
+        if sq.get('block'):
+            self.sound.play('bump')
+            return
         if sq.get('shop'):
             from .town import enter_shop
             enter_shop(self, sq)
@@ -1215,7 +1242,7 @@ class Game:
     def ev_teleport(self, sq, nxt):
         x, y, f = sq['teleport']
         self.sound.play('magic')
-        self.view_flash = 0.15
+        self.flash('#c080ff', 0.2)
         st = self.st
         st.x, st.y = x, y
         if f is not None:
@@ -1579,6 +1606,8 @@ class Game:
             return
         e = sp['effect']
         self.sound.play('heal' if e in ('heal', 'cure', 'raise') else 'spell')
+        from .combat import spell_colour
+        self.flash(spell_colour(sp), 0.35)
         st = self.st
         if e == 'heal':
             whom = [self.party[target]] if target is not None else self.party

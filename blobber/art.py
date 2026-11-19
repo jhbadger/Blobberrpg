@@ -606,6 +606,33 @@ def _p(p):
     p.circle(119, 117, 3, 'white', lum=1.0)
 
 
+def standing(p, cx, robe, skin='skin', hair='hair', hood=False, beard=None,
+             staff=False, apron=None):
+    """A whole person, standing, for the view (as a sprite)."""
+    p.poly([(cx - 10, 40), (cx + 10, 40), (cx + 16, 118), (cx - 16, 118)],
+           robe, lum=0.55, gradx=-0.35, tex=0.06)
+    if apron:
+        p.poly([(cx - 8, 56), (cx + 8, 56), (cx + 11, 104), (cx - 11, 104)],
+               apron, lum=0.6)
+    for s in (-1, 1):
+        p.ellipse(cx + s * 7, 120, 7, 3, 'leather', lum=0.4)
+        p.limb(cx + s * 12, 44, cx + s * 16, 76, 4.5, 4, robe)
+        p.circle(cx + s * 16, 79, 3.5, skin)
+    if staff:
+        p.line(cx + 19, 30, cx + 19, 122, 'wood', 0.55, 2.5)
+    p.ellipse(cx, 28, 9, 11, skin, tex=0.05)
+    if hood:
+        p.ellipse(cx, 25, 11, 12, robe, bias=0.05)
+        p.ellipse(cx, 30, 7, 8, skin, bias=-0.15)
+    else:
+        p.ellipse(cx, 19, 9, 5, hair, tex=0.2)
+    if beard:
+        p.poly([(cx - 7, 31), (cx + 7, 31), (cx + 4, 44), (cx - 4, 44)],
+               beard, lum=0.6)
+    for s in (-1, 1):
+        p.circle(cx + s * 3.5, 27, 1.1, 'black', lum=0.1)
+
+
 # ----------------------------------------------------- things in squares
 
 @picture('chest', 64, 48, height=0.26)
