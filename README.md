@@ -4,8 +4,8 @@ An engine for *blobbers*: first-person, party-based dungeon crawlers in
 the style of the 1980s, where a party of six moves as one through a maze
 of squares, seen through a window on the world, with a scroll of messages
 beside it and the party's roster below. It's written in Python and Tk
-with nothing to install. Everything is drawn in code, sound included, so
-there are no image or sound files.
+with nothing to install. Everything is drawn in code, sound and music
+included, so there are no image or sound files.
 
 The sample game is **The Ashen Crypt**.
 
@@ -37,8 +37,8 @@ unmade.
     and saves the game;
   - Thessaly the Sage gives hints for a price.
 - **The party**: Brannoc (fighter), Hild (paladin), Torvald (fighter), Pip
-  (rogue), Mother Aveline (priest) and Elowen (mage). At the Guild you can
-  roll up others.
+  (rogue, with a bow so he can shoot from the back row), Mother Aveline
+  (priest) and Elowen (mage). At the Guild you can roll up others.
 - **The dungeon** has doors, locked doors (keys, picking, forcing), hidden
   doors, a riddle door, magical darkness, a spinner, teleport traps, pits,
   a place where magic dies, fountains, chests (some trapped), guardians
@@ -54,7 +54,7 @@ unmade.
 | 1 to 6 | a character's sheet: equip, use, trade and drop items |
 | M | the map |
 | F | search for hidden doors |
-| Esc | the game menu: save, sound, fight speed, quit |
+| Esc | the game menu: save, sound, music, fight speed, quit |
 | ? | help |
 
 With the mouse, click the left or right third of the view to turn and the
@@ -65,7 +65,8 @@ to fit whatever size you give it.
 In a fight the party chooses to fight or run. Each character then gets an
 order (attack, defend, cast or use an item) and the round plays out a line
 at a time. Only the first three in the marching order can fight hand to
-hand.
+hand; anyone with a bow or crossbow can shoot from any rank, using up the
+party's arrows (the Armoury sells more).
 
 The game saves to `~/.ashencrypt.json` whenever you change level, rest at
 the inn, or quit.
@@ -88,7 +89,10 @@ the inn, or quit.
 | `modes.py` | title, exploring, map, character sheet, game over, ending |
 | `combat.py` | fights |
 | `town.py` | Guild, shop, temple, inn and sage |
-| `sound.py` | synthesized sound effects (afplay, paplay/aplay or winsound) |
+| `sound.py` | synthesized sound effects and the music player (afplay, paplay/aplay or winsound) |
+| `music.py` | chiptune tunes in the tilerpgs' notation, and their synthesizer |
+| `words.py` | every word the engine puts on screen, which a game can change |
+| `balance.py` | a simulated player that measures a game's difficulty |
 | `tkshell.py` | the Tk window |
 
 The whole screen, text included, is drawn into one framebuffer in pure
@@ -116,8 +120,49 @@ A game is a script that defines a handful of names and calls
   under the sky
 - `HINTS` for the sage, and `HOOKS` for anything the engine doesn't do
   itself (the sample uses one for its ending)
+- `SUPPLIES`: the ammunition the party starts with, such as
+  `{'arrows': 40}`
+- `WORDS`: the engine's on-screen words this game changes (see below)
+- `MUSIC`: tunes to add or replace; a level picks one with `music=`
 - changes to the rules tables: `rules.ITEMS.update(...)`,
-  `rules.MONSTERS.update(...)`, `rules.XP_TABLE` and so on
+  `rules.MONSTERS.update(...)`, `rules.XP_TABLE`, `rules.LOOT` and so on
+
+The rules tables are a stock fantasy set. Every entry can be replaced, and
+a few fields make them fit other settings:
+
+- items: `verb` ("drinks", "slashes", "fires"), `range` in feet for a
+  weapon that works from any rank, and `ammo` naming the supply each shot
+  uses. An item of kind `'ammo'` adds `amount` to that supply when bought.
+- monsters: `tags` that spells single out (Turn Undead looks for
+  `'undead'`; a game could tag `'robot'`), `range` with `shoots` ("hurls
+  fire at"), `unique` ("the Ashen King", immune to sleep and turning),
+  `acts` (actions a round, for bosses) and `death` (what's said when it
+  falls)
+- spells: `tag` for a turning spell, `bane` for one that does double
+  damage to a tag, `immune` for tags a sleep spell can't touch
+- `rules.UNLIVING`: tags whose monsters are "destroyed" rather than killed
+
+### Words
+
+Everything the engine itself says, from "gold" and "spell points" to "Cast
+a spell", "Raise" and "the Guild", is in `blobber/words.py`. A game with
+another setting names only the ones it changes:
+
+```python
+WORDS = {'money': 'credits', 'points': 'psi points', 'Points': 'Psi points',
+         'pts': 'Psi Pts', 'sp': 'PP', 'cast': 'Use psionics',
+         'guild': 'Command', 'raise': 'Revive'}
+```
+
+### Music
+
+Tunes are written as in the tilerpgs: a chord per bar, a melody of eighth
+notes (`F#4` starts a note, `-` holds it, `.` rests), voices that repeat a
+one-bar pattern of chord tones (`R2`, `T4`, `F3`) and a drum pattern
+(`k s h`). The engine plays `title`, `town`, `dungeon`, `combat` and
+`victory` (once) when they suit, and the sample adds `halls` for its last
+level. Tunes render in the background on the first run and are cached in
+`~/.cache/<game>`.
 
 A legend entry is a dict. The keys, all documented in `world.py`, include
 `solid`, `wall`, `floor`, `ceil`, `sprite`, `door` (`True` or
@@ -144,4 +189,19 @@ It also draws every texture and picture once and plays a fight.
 ```
 
 This plays a list of keys without a window and saves the screen as a PNG.
-Other flags are `--mute`, and `--scale 2` to choose the window's size.
+
+```bash
+./ashencrypt --balance 20
+```
+
+This plays the game's fights with a simulated player over 20 campaigns.
+The player heals the hurt, casts its best spells when a fight is worth it,
+goes back to town to rest, train and buy better gear, and dives deeper as
+the party grows. The report gives the number of random fights to reach
+each level, then each fixed fight's chance of winning (and rounds taken,
+and hit points left) for the parties those campaigns had at each level. A
+real player is less tidy than the simulated one, so aim for fights the
+simulation wins comfortably at the level a player arrives.
+
+Other flags are `--mute`, `--nomusic`, and `--scale 2` to choose the
+window's size.

@@ -46,6 +46,7 @@ DEATH = "Your party has perished in the dark beneath Hollowmere. Their " \
         "bones will lie with the Ashen King's, until braver souls come."
 
 GOLD = 160
+SUPPLIES = {'arrows': 40}
 START = ('town', 8, 4, 0)
 
 # ------------------------------------------------------------ the party
@@ -58,7 +59,8 @@ PARTY = [
     dict(name='Torvald', race='Dwarf', cls='Fighter', st=16, iq=8, dx=11,
          cn=17, lk=9, hp=14),
     dict(name='Pip Underbough', race='Halfling', cls='Rogue', st=10, iq=12,
-         dx=18, cn=12, lk=17, hp=8, pack=['torch']),
+         dx=18, cn=12, lk=17, hp=8, gear=['shortbow', 'leather'],
+         pack=['shortsword', 'torch']),
     dict(name='Mother Aveline', race='Human', cls='Priest', st=11, iq=15,
          dx=10, cn=13, lk=12, hp=10, pack=['potion']),
     dict(name='Elowen', race='Elf', cls='Mage', st=8, iq=18, dx=15, cn=10,
@@ -89,12 +91,22 @@ rules.ITEMS.update({
                                        'silk; rogues may wear it.'),
 })
 
-rules.MONSTERS['deathknight'].update(level=7, hp='8d10', dmg='1d8+2')
 rules.MONSTERS.update({
+    'ghoullord': dict(name='Ghoul Lord', plural='Ghoul Lords', art='ghoul',
+                      level=6, hp='8d8+8', ac=3, hits=3, dmg='1d6+2', xp=200,
+                      gold='6d10', tags=['undead'], special=['paralyze:20']),
+    'ashpriest': dict(name='Ash Priest', plural='Ash Priests', art='cultist',
+                      level=6, hp='7d8', ac=5, hits=1, dmg='1d8', xp=180,
+                      gold='8d10', range=True, shoots='hurls fire at',
+                      special=['cast:FLAM:45']),
+    'kingsguard': dict(name='Knight of Ash', plural='Knights of Ash',
+                       art='deathknight', level=9, hp='12d10', ac=-1, hits=2,
+                       dmg='2d6+3', xp=600, gold='10d20', tags=['undead']),
     'ashenking': dict(name='Ashen King', plural='Ashen Kings', unique=True,
-                      art='ashenking', level=10, hp='12d10+30', ac=2, hits=2,
-                      dmg='1d10+2', xp=2400, gold='0', undead=True,
-                      special=['breath:3d6:30', 'drain:10'],
+                      art='ashenking', level=12, hp='20d10+100', ac=-2,
+                      acts=2, hits=2, dmg='2d8+4', xp=3000, gold='0',
+                      tags=['undead'],
+                      special=['breath:4d6:35', 'drain:15'],
                       breath_msg='raises his staff, and ash-fire rains '
                                  'down!'),
 })
@@ -160,7 +172,7 @@ TOWN = dict(
                            'what the saint began."'),
         'W': dict(solid=True, wall='shop_sage', shop='sage',
                   name="Thessaly the Sage", art='sage', backdrop='cata',
-                  price=15,
+                  price=15, lore_label='Ask about the crypt',
                   greeting='Thessaly peers over a heap of books. "Ah. More '
                            'heroes. Sit, sit. Knowledge costs fifteen '
                            'crowns."',
@@ -248,7 +260,7 @@ CRYPT1 = dict(
         'f': dict(sprite='fountain', fountain='heal',
                   look='A little fountain trickles here, fed by a spring. '
                        'Drink from it?'),
-        'K': dict(fight=[('kobold', 4)], flag='ironkey', item='ironkey',
+        'K': dict(fight=[('kobold', 5)], flag='ironkey', item='ironkey',
                   fight_msg='Kobolds! A band of them squats around a heap '
                             'of stolen candlesticks. The biggest wears an '
                             'iron key on a thong around its neck.',
@@ -326,12 +338,12 @@ CRYPT2 = dict(
         'v': dict(dark=True, chest=dict(gold='50', items=['wardring'],
                                         look='Groping in the dark, you '
                                              'find a small chest.')),
-        'B': dict(fight=[('ghoul', 3)], flag='bonekey', item='bonekey',
+        'B': dict(fight=[('ghoullord', 1), ('ghoul', 4)], flag='bonekey', item='bonekey',
                   sprite='bones', sprite_after='bones',
-                  fight_msg='A bone-house, heaped with skulls. Three ghouls '
-                            'look up from their feast, and one wears a key '
-                            'of bone.'),
-        'k': dict(fight=[('cultist', 2), ('zombie', 2)], flag='altar',
+                  fight_msg='A bone-house, heaped with skulls. Ghouls look '
+                            'up from their feast, and the biggest of them '
+                            'wears a key of bone.'),
+        'k': dict(fight=[('ashpriest', 1), ('cultist', 3), ('zombie', 3)], flag='altar',
                   sprite='altar', sprite_after='altar',
                   fight_msg='Robed figures turn from a black altar. "The '
                             'King wakes!" one cries. "Feed him!" The dead '
@@ -361,6 +373,7 @@ CRYPT2 = dict(
 CRYPT3 = dict(
     name='The Ashen Halls',
     depth=3,
+    music='halls',
     theme=dict(wall='ashen', door='ashen_door', locked='ashen_locked',
                floor='ashen_floor', ceil='ashen_ceil', stairs='ashen_stairs',
                ambient=1.15,
@@ -416,12 +429,12 @@ CRYPT3 = dict(
                        'Someone carved a saint\'s sign above it. Drink?'),
         'x': dict(teleport=[1, 2, 2], tmsg='Red runes flare under your '
                                            'feet, and the hall is gone!'),
-        'i': dict(fight=[('imp', 3)], flag='imps', item='potion',
+        'i': dict(fight=[('imp', 6)], flag='imps', item='potion',
                   sprite='brazier', sprite_after='brazier',
                   fight_msg='Fire imps cavort around a brazier, giggling. '
                             'They see you, and their giggling stops.'),
-        'G': dict(fight=[('deathknight', 2)], flag='knights',
-                  fight_msg="Two knights in black armour stand before a "
+        'G': dict(fight=[('kingsguard', 3)], flag='knights',
+                  fight_msg="Three knights in black armour stand before a "
                             "great door. Their eyes burn red behind their "
                             "visors. \"None pass,\" they say together, and "
                             "draw their swords.",
@@ -472,7 +485,7 @@ HINTS = [
     ('bonekey', '"The warden\'s door leads to a second door, and that one '
                 'needs a key of bone. Ghouls keep it, in their bone-house in '
                 'the middle of the catacombs."'),
-    ('knights', '"Below, in the Ashen Halls, two of Morvane\'s knights '
+    ('knights', '"Below, in the Ashen Halls, three of Morvane\'s knights '
                 'still guard his door. Bless your blows and ward '
                 'yourselves: they hit like falling towers. And drink from '
                 'the saint\'s fountain first."'),

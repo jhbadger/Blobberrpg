@@ -126,6 +126,9 @@ class TkShell:
             if self.g.st and not self.g.quit:
                 self.g.save()
         finally:
+            if hasattr(self.g.sound, 'stop_music'):
+                self.g.sound.music(None)
+                self.g.sound.stop_music()
             self.root.destroy()
 
     def draw(self):

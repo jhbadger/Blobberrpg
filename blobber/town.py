@@ -12,6 +12,7 @@ from .modes import picture_view
 from . import rules
 from .rules import (Character, ITEMS, RACES, CLASSES, STATS, STAT_NAMES,
                     can_use, xp_for, PACK, MAX_LEVEL)
+from .words import w
 
 
 def enter_shop(g, sq):
@@ -33,12 +34,13 @@ def view_for(sq, default_art, backdrop='cellar'):
 
 def guild(g, sq, sel=0):
     view = view_for(sq, 'guildmaster', 'cata')
-    name = sq.get('name', "Adventurers' Guild")
+    name = sq.get('name', w('Guild'))
     trainable = [c for c in g.party if c.alive and c.can_level()]
     opts = [('Train for new levels', 'train', bool(trainable)),
             ('Add a member to the party', 'add',
              bool(g.st.roster) and len(g.party) < 6),
-            ('Leave a member at the Guild', 'remove', len(g.party) > 1),
+            ('Leave a member at %s' % w('guild'), 'remove',
+             len(g.party) > 1),
             ('Create a new adventurer', 'create'),
             ('Change the marching order', 'order', len(g.party) > 1),
             ('Retire an adventurer', 'retire', bool(g.st.roster)),
@@ -116,21 +118,22 @@ def reorder(g, back, view, name):
 def create(g, back, view, name):
     def got_name(nm):
         races = list(RACES)
-        g.ask('Choose a race', races, lambda r: got_race(nm, r),
+        g.ask(w('race_pick'), races, lambda r: got_race(nm, r),
               '\n'.join('%s: %s' % (r, RACES[r]['text']) for r in races),
               on_cancel=back, view=view, place=name)
 
     def got_race(nm, race):
         classes = list(CLASSES)
-        g.ask('Choose a class', classes,
+        g.ask(w('class_pick'), classes,
               lambda k: rolled(Character.roll_new(nm, race, k, g.rng)),
               '\n'.join('%s: %s' % (k, CLASSES[k]['text']) for k in classes),
               on_cancel=back, view=view, place=name)
 
     def rolled(c):
         stats = '   '.join('%s %d' % (s.upper(), getattr(c, s)) for s in STATS)
-        text = ('%s the %s %s\n\n%s\n\nHit points %d   Spell points %d'
-                % (c.name, c.race, c.cls, stats, c.maxhp, c.maxsp))
+        text = ('%s the %s %s\n\n%s\n\nHit points %d   %s %d'
+                % (c.name, c.race, c.cls, stats, c.maxhp, w('Points'),
+                   c.maxsp))
 
         def pick(v):
             if v == 'keep':
@@ -142,7 +145,7 @@ def create(g, back, view, name):
                     where = 'joins the party'
                 else:
                     g.st.roster.append(c)
-                    where = 'waits at the Guild'
+                    where = 'waits at %s' % w('guild')
                 g.sound.play('level')
                 g.say('%s %s.' % (c.name, where))
                 back()
@@ -151,12 +154,11 @@ def create(g, back, view, name):
                 rolled(c)
             else:
                 back()
-        g.ask('A new adventurer', [('Keep', 'keep'), ('Roll again', 'reroll'),
+        g.ask(w('new_hero'), [('Keep', 'keep'), ('Roll again', 'reroll'),
                                    ('Forget it', 'forget')], pick, text,
               on_cancel=back, view=view, place=name)
 
-    g.push(TextInput('A new adventurer', 'What is the name of this new '
-                     'adventurer?', got_name, maxlen=14, on_cancel=back,
+    g.push(TextInput(w('new_hero'), w('name_hero'), got_name, maxlen=14, on_cancel=back,
                      view=view))
 
 
@@ -164,11 +166,12 @@ def create(g, back, view, name):
 
 def shop(g, sq):
     view = view_for(sq, 'smith', 'cellar')
-    name = sq.get('name', 'The Armoury')
+    name = sq.get('name', w('shop'))
     stock = sq.get('stock', ['dagger', 'staff', 'club', 'mace', 'shortsword',
                              'longsword', 'warhammer', 'battleaxe', 'robes',
                              'leather', 'chain', 'plate', 'buckler', 'kite',
-                             'cap', 'helm', 'gauntlets', 'potion', 'antidote',
+                             'cap', 'helm', 'gauntlets', 'shortbow',
+                             'crossbow', 'arrows', 'potion', 'antidote',
                              'torch'])
 
     def back():
@@ -183,16 +186,26 @@ def shop(g, sq):
     g.ask(name, [('Buy', 'buy'), ('Sell', 'sell'), ('Leave', 'leave')], pick,
           sq.get('greeting', 'The smith wipes soot from her hands. "Steel, '
                              'leather, a torch? I have it all."')
-          + '\n\nYou have %d gold.' % g.st.gold,
+          + '\n\nYou have %d %s.' % (g.st.gold, w('money')),
           on_cancel=lambda: None, view=view, place=name)
 
 
 def buy(g, sq, stock, back, view, name, sel=0):
-    opts = [('%-18s %4d' % (ITEMS[i]['name'], ITEMS[i]['price']), i,
+    opts = [('%s\t%d' % (ITEMS[i]['name'], ITEMS[i]['price']), i,
              ITEMS[i]['price'] <= g.st.gold) for i in stock]
 
     def pick(iid):
         it = ITEMS[iid]
+        if it['kind'] == 'ammo':
+            g.st.gold -= it['price']
+            kind = it.get('ammo', iid)
+            g.st.supplies[kind] = g.st.supplies.get(kind, 0) + \
+                it.get('amount', 1)
+            g.sound.play('coin')
+            g.say('You buy %s: the party has %d %s.' % (
+                it['name'], g.st.supplies[kind], kind))
+            buy(g, sq, stock, back, view, name, stock.index(iid))
+            return
 
         def who(j):
             c = g.party[j]
@@ -223,11 +236,12 @@ def buy(g, sq, stock, back, view, name, sel=0):
                          g.party.index(c), True))
         from .modes import describe
         g.ask('Who gets the %s?' % it['name'], mark, who,
-              describe(it) + '\n\nYou have %d gold.' % g.st.gold,
+              describe(it) + '\n\nYou have %d %s.' % (g.st.gold,
+                                                       w('money')),
               on_cancel=lambda: buy(g, sq, stock, back, view, name, sel),
               view=view, place=name)
 
-    g.ask('Buy (you have %d gold)' % g.st.gold, opts, pick,
+    g.ask('Buy (you have %d %s)' % (g.st.gold, w('money')), opts, pick,
           on_cancel=back, view=view, place=name, sel=sel)
 
 
@@ -238,7 +252,7 @@ def sell(g, back, view, name):
         for k, iid in enumerate(c.pack):
             it = ITEMS[iid]
             price = it.get('price', 0) // 2
-            opts.append(('%-18s %4d' % (it['name'], price), k,
+            opts.append(('%s\t%d' % (it['name'], price), k,
                          price > 0 and it['kind'] not in ('quest', 'key')))
         if not opts:
             g.tell('%s has nothing in the pack to sell.' % c.name, back)
@@ -249,8 +263,8 @@ def sell(g, back, view, name):
             price = ITEMS[iid].get('price', 0) // 2
             g.st.gold += price
             g.sound.play('coin')
-            g.say('%s sells the %s for %d gold.' % (c.name, ITEMS[iid]['name'],
-                                                    price))
+            g.say('%s sells the %s for %d %s.' % (
+                c.name, ITEMS[iid]['name'], price, w('money')))
             pick_char(j)
         g.ask('%s sells' % c.name, opts, sold, 'Equipment must be taken '
               'off before it can be sold (see the character sheet).',
@@ -264,21 +278,23 @@ def sell(g, back, view, name):
 
 def temple(g, sq):
     view = view_for(sq, 'priestess', 'cata')
-    name = sq.get('name', 'The Temple')
+    name = sq.get('name', w('temple'))
     hurt = sum(c.maxhp - c.hp for c in g.party if c.alive)
     sick = [c for c in g.party if c.status in ('poisoned', 'paralyzed',
                                                'stoned')]
     dead = [c for c in g.party if c.status == 'dead']
     heal_cost = hurt
-    opts = [('Heal wounds (%d gold)' % heal_cost, 'heal',
+    opts = [('%s (%d %s)' % (w('heal_wounds'), heal_cost, w('money')), 'heal',
              hurt > 0 and g.st.gold >= heal_cost)]
     for c in sick:
         cost = 30 * c.level
-        opts.append(('Cure %s (%d gold)' % (c.name, cost), ('cure', c),
+        opts.append(('Cure %s (%d %s)' % (c.name, cost, w('money')),
+                     ('cure', c),
                      g.st.gold >= cost))
     for c in dead:
         cost = 100 * c.level
-        opts.append(('Raise %s (%d gold)' % (c.name, cost), ('raise', c),
+        opts.append(('%s %s (%d %s)' % (w('raise'), c.name, cost,
+                                        w('money')), ('raise', c),
                      g.st.gold >= cost))
     opts.append(('Leave', 'leave'))
 
@@ -294,7 +310,7 @@ def temple(g, sq):
                 if c.alive:
                     c.hp = c.maxhp
             g.sound.play('heal')
-            g.say('The priestess lays hands on your wounds.')
+            g.say(sq.get('healed', w('healed')))
             back()
         elif v[0] == 'cure':
             c = v[1]
@@ -316,7 +332,7 @@ def temple(g, sq):
     g.ask(name, opts, pick, sq.get('greeting', 'Candles gutter before the '
                                    'altar. "Peace be with you. How may the '
                                    'temple help?"') +
-          '\n\nYou have %d gold.' % g.st.gold,
+          '\n\nYou have %d %s.' % (g.st.gold, w('money')),
           on_cancel=lambda: None, view=view, place=name)
 
 
@@ -324,7 +340,7 @@ def temple(g, sq):
 
 def inn(g, sq):
     view = view_for(sq, 'innkeeper', 'cellar')
-    name = sq.get('name', 'The Inn')
+    name = sq.get('name', w('inn'))
     cost = sq.get('price', 4) * len(g.party)
 
     def pick(v):
@@ -338,26 +354,26 @@ def inn(g, sq):
                         c.status = 'ok'
             g.save()
             g.sound.play('heal')
-            g.say('You sleep soundly. Hit points and spell points are '
-                  'restored, and the game is saved.')
+            g.say(w('rested'))
             ready = [c.name for c in g.party if c.alive and c.can_level()]
-            text = 'Morning comes. You wake rested and whole.\n\n(The game ' \
+            text = w('morning') + '\n\n(The game ' \
                    'has been saved.)'
             if ready:
-                text += '\n\n%s could train at the Guild.' % ', '.join(ready)
+                text += '\n\n%s could train at %s.' % (', '.join(ready),
+                                                     w('guild'))
             g.tell(text, title=name, view=view, place=name)
         elif v == 'news':
             news = sq.get('news', ['"Nothing new under the sun."'])
             g.tell(g.rng.choice(news), lambda: inn(g, sq), view=view,
                    place=name)
 
-    g.ask(name, [('Rest the night (%d gold)' % cost, 'rest',
+    g.ask(name, [('%s (%d %s)' % (w('rest'), cost, w('money')), 'rest',
                   g.st.gold >= cost),
                  ('Ask for news', 'news', bool(sq.get('news'))),
                  ('Leave', 'leave')], pick,
           sq.get('greeting', 'The innkeeper polishes a tankard. "Beds are '
                              'clean, the stew is hot."') +
-          '\n\nYou have %d gold.' % g.st.gold,
+          '\n\nYou have %d %s.' % (g.st.gold, w('money')),
           on_cancel=lambda: None, view=view, place=name)
 
 
@@ -365,7 +381,7 @@ def inn(g, sq):
 
 def sage(g, sq):
     view = view_for(sq, 'sage', 'cata')
-    name = sq.get('name', "The Sage's Tower")
+    name = sq.get('name', w('sage'))
     price = sq.get('price', 20)
     hints = getattr(g.d, 'HINTS', [])
 
@@ -383,9 +399,10 @@ def sage(g, sq):
             g.tell(sq.get('lore', '"Knowledge is not free, friend."'),
                    lambda: sage(g, sq), view=view, place=name)
 
-    g.ask(name, [('Ask for counsel (%d gold)' % price, 'ask',
+    g.ask(name, [('%s (%d %s)' % (w('counsel'), price, w('money')), 'ask',
                   g.st.gold >= price),
-                 ('Ask about the crypt', 'lore', bool(sq.get('lore'))),
+                 (sq.get('lore_label', w('lore')), 'lore',
+                  bool(sq.get('lore'))),
                  ('Leave', 'leave')], pick,
           sq.get('greeting', 'An old man peers at you over a pile of books.'),
           on_cancel=lambda: None, view=view, place=name)

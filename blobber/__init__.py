@@ -16,6 +16,13 @@ def run(gdef, argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if '--selftest' in argv:
         sys.exit(selftest(gdef))
+    if '--balance' in argv:
+        from .balance import report
+        i = argv.index('--balance')
+        runs = int(argv[i + 1]) if i + 1 < len(argv) and \
+            argv[i + 1].isdigit() else 20
+        report(gdef, runs)
+        return
     if '--shot' in argv:
         i = argv.index('--shot')
         path = argv[i + 1]
@@ -34,9 +41,17 @@ def run(gdef, argv=None):
     snd = Sound(gdef.ID)
     if '--mute' in argv:
         snd.on = False
+    if '--nomusic' in argv:
+        snd.music_on = False
     snd.prepare()
     g = Game(gdef, snd)
-    TkShell(g, scale).run()
+    if snd.on and snd.music_on:
+        snd.prepare_music(g.tunes, first=('title', 'town'))
+    try:
+        TkShell(g, scale).run()
+    finally:
+        snd.music(None)
+        snd.stop_music()
 
 
 class _Silent:
@@ -169,8 +184,16 @@ def selftest(gdef):
                             L.char(x, y) != ' ':
                         problems.append('%s: %d,%d (%r) cannot be reached'
                                         % (lid, x, y, L.char(x, y)))
-    for sid, sp in SPELLS.items():
-        pass
+    from . import music
+    for name, tune in g.tunes.items():
+        try:
+            music.check(tune)
+        except (ValueError, KeyError, IndexError) as e:
+            problems.append('tune %s: %s' % (name, e))
+    for lid, L in g.levels.items():
+        t = L.spec.get('music')
+        if t and t not in g.tunes:
+            problems.append('%s: no tune %r' % (lid, t))
     for n in art.names():
         art.get(n)
     for n in textures.names():

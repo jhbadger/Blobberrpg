@@ -11,11 +11,10 @@ from .game import (Mode, Menu, VX, VY, VW, VH, TX, TY, TW, TH, INK, INK_DIM,
 from .gfx import rgb
 from . import font
 from . import art
-from .rules import (Group, MONSTERS, SPELLS, ITEMS, roll, bonus, xp_for)
-
-VERBS = {'dagger': 'stabs', 'staff': 'strikes', 'club': 'clubs',
-         'mace': 'smashes', 'shortsword': 'slashes', 'longsword': 'slashes',
-         'warhammer': 'hammers', 'battleaxe': 'hacks'}
+from . import rules
+from .rules import (Group, MONSTERS, SPELLS, ITEMS, roll, bonus, xp_for,
+                    has_tag, death_text)
+from .words import w
 
 COMBAT_EFFECTS = ('damage', 'heal', 'cure', 'ward', 'bless', 'sleep', 'turn',
                   'smite')
@@ -153,15 +152,20 @@ class CombatMode(Mode):
             self.start_play(g, self.simulate(g), None)
             return
         c = g.party[i]
-        reach = [(gi, grp) for gi, grp in self.live_groups() if grp.dist <= 10]
+        reach = self.reach(g, c, i)
         opts = []
-        if i < 3:
-            opts.append(('Attack', 'attack', bool(reach)))
+        weapon = c.item('weapon') or {}
+        if weapon.get('range') or i < 3:
+            label = 'Attack'
+            if weapon.get('ammo') and not self.has_ammo(g, weapon):
+                label = 'Attack (no %s)' % weapon['ammo']
+                reach = []
+            opts.append((label, 'attack', bool(reach)))
         opts.append(('Defend', 'defend'))
         spells = [sid for sid in c.spells()
                   if SPELLS[sid]['effect'] in COMBAT_EFFECTS]
         if spells:
-            opts.append(('Cast a spell', 'cast',
+            opts.append((w('cast'), 'cast',
                          any(SPELLS[s]['sp'] <= c.sp for s in spells)))
         usable = [j for j, iid in enumerate(c.pack) if self.usable(iid)]
         if usable:
@@ -196,6 +200,17 @@ class CombatMode(Mode):
                     text=self.groups_text(), on_cancel=back,
                     view=self.draw_view, place=self.place, roster_sel=i))
 
+    def reach(self, g, c, i):
+        """The groups character i could attack: within 10' for the front
+        rank, or within the range of a ranged weapon from any rank."""
+        weapon = c.item('weapon') or {}
+        rng_ = weapon.get('range', 0)
+        return [(gi, grp) for gi, grp in self.live_groups()
+                if grp.dist <= max(rng_, 10 if i < 3 else 0)]
+
+    def has_ammo(self, g, weapon):
+        return g.st.supplies.get(weapon['ammo'], 0) > 0
+
     def usable(self, iid):
         it = ITEMS.get(iid, {})
         if it.get('use') in ('heal', 'cure'):
@@ -217,15 +232,16 @@ class CombatMode(Mode):
 
     def choose_spell(self, g, i, spells):
         c = g.party[i]
-        opts = [('%-14s %2d SP' % (SPELLS[s]['name'], SPELLS[s]['sp']), s,
+        opts = [('%s\t%d %s' % (SPELLS[s]['name'], SPELLS[s]['sp'],
+                                   w('sp')), s,
                  SPELLS[s]['sp'] <= c.sp) for s in spells]
 
         def pick(sid):
             self.target_for(g, i, SPELLS[sid]['target'],
                             lambda t: (self.orders.__setitem__(
                                 i, ('cast', sid, t)), self.order(g, i + 1)))
-        g.push(Menu('%s casts' % c.name, opts, pick,
-                    text='%d of %d spell points.' % (c.sp, c.maxsp),
+        g.push(Menu('%s %s' % (c.name, w('casts')), opts, pick,
+                    text='%d of %d %s.' % (c.sp, c.maxsp, w('points')),
                     on_cancel=lambda: self.order(g, i), view=self.draw_view,
                     place=self.place, roster_sel=i))
 
@@ -278,7 +294,9 @@ class CombatMode(Mode):
                                  0, i, None))
         for gi, grp in enumerate(self.groups):
             for f in grp.alive:
-                acts.append((grp.m['level'] + rng.randint(1, 10) + 2, 1, gi, f))
+                for _ in range(grp.m.get('acts', 1)):
+                    acts.append((grp.m['level'] + rng.randint(1, 10) + 2, 1,
+                                 gi, f))
         acts.sort(key=lambda a: -a[0])
         defending = {i for i, o in self.orders.items() if o[0] == 'defend'}
         for _, who, a, b in acts:
@@ -308,25 +326,35 @@ class CombatMode(Mode):
         if o[0] == 'defend':
             beats.append(('%s stands on guard.' % c.name, None))
         elif o[0] == 'attack':
-            grp = self.groups[o[1]]
-            if not grp.alive or grp.dist > 10:
-                grp = next((gg for gg in self.groups
-                            if gg.alive and gg.dist <= 10), None)
+            weapon = c.item('weapon') or {}
+            ranged = bool(weapon.get('range'))
+            reach = dict(self.reach(g, c, i))
+            grp = self.groups[o[1]] if o[1] in reach else None
+            if grp is None or not grp.alive:
+                grp = next(iter(reach.values()), None)
             if grp is None:
                 beats.append(('%s has no foe within reach.' % c.name, None))
                 return
             gi = self.groups.index(grp)
-            verb = VERBS.get(c.equip.get('weapon'), 'hits')
+            verb = weapon.get('verb', 'hits')
             for n in range(c.attacks()):
                 targets = grp.alive
                 if not targets:
                     break
+                if weapon.get('ammo'):
+                    if not self.has_ammo(g, weapon):
+                        beats.append((w('no_ammo', c.name, weapon['ammo']),
+                                      None))
+                        break
+                    g.st.supplies[weapon['ammo']] -= 1
                 f = rng.choice(targets)
-                name = grp.m['name']
                 r = rng.randint(1, 20)
                 th = c.to_hit() + self.bless + (4 if f.asleep else 0)
+                if ranged:
+                    th += bonus(c.dx) - bonus(c.st)
                 if r == 20 or (r != 1 and r + th + grp.m['ac'] >= 20):
-                    dmg = max(1, roll(c.damage_dice(), rng) + bonus(c.st))
+                    dmg = max(1, roll(c.damage_dice(), rng) +
+                              (0 if ranged else bonus(c.st)))
                     if r == 20:
                         dmg *= 2
                     f.hp -= dmg
@@ -338,19 +366,19 @@ class CombatMode(Mode):
                     if f.hp <= 0:
                         self.kill(grp, gi, f, beats)
                 else:
-                    beats.append(('%s swings at %s and misses.'
-                                  % (c.name, called(grp.m)), ('miss',)))
+                    beats.append((w('shot_miss' if ranged else 'melee_miss',
+                                    c.name, called(grp.m)), ('miss',)))
         elif o[0] == 'cast':
             sp = SPELLS[o[1]]
             if c.sp < sp['sp']:
-                beats.append(('%s has too few spell points.' % c.name, None))
+                beats.append((w('too_few', c.name), None))
                 return
             c.sp -= sp['sp']
-            beats.append(('%s casts %s!' % (c.name, sp['name']),
+            beats.append(('%s %s %s!' % (c.name, w('casts'), sp['name']),
                           ('sound', 'spell')))
             beats.append(('', self.snap(g, i)))
             if g.antimagic():
-                beats.append(('The spell fizzles into nothing.', None))
+                beats.append((w('fizzle_fight'), None))
                 return
             self.apply_spell(g, c, sp, o[2], beats, c.level)
         elif o[0] == 'use':
@@ -363,24 +391,25 @@ class CombatMode(Mode):
             if it.get('use') == 'heal':
                 n = roll(it.get('amount', '2d8'), rng)
                 c.hp = min(c.maxhp, c.hp + n)
-                beats.append(('%s drinks a %s and is healed.' % (c.name,
-                                                                 it['name']),
-                              self.snap(g, i)))
+                beats.append(('%s %s the %s and is healed.' % (
+                    c.name, it.get('verb', 'uses'), it['name']),
+                    self.snap(g, i)))
             elif it.get('use') == 'cure':
                 if c.status == 'poisoned':
                     c.status = 'ok'
-                beats.append(('%s drinks an %s.' % (c.name, it['name']),
-                              self.snap(g, i)))
+                beats.append(('%s %s the %s.' % (
+                    c.name, it.get('verb', 'uses'), it['name']),
+                    self.snap(g, i)))
             elif it.get('use') == 'spell':
                 sp = SPELLS[it['spell']]
-                beats.append(('%s reads a %s!' % (c.name, it['name']),
+                beats.append(('%s %s the %s!' % (
+                    c.name, it.get('verb', 'uses'), it['name']),
                               ('sound', 'spell')))
                 self.apply_spell(g, c, sp, o[2], beats, 5)
 
     def kill(self, grp, gi, f, beats):
         self.kills.append(grp.kind)
-        beats.append(('The %s dies!' % grp.m['name'] if not grp.m.get('undead')
-                      else 'The %s is destroyed!' % grp.m['name'], None))
+        beats.append((death_text(grp.m), None))
         if not grp.alive:
             beats.append(('', ('gone', gi)))
 
@@ -404,7 +433,9 @@ class CombatMode(Mode):
                 if e == 'sleep':
                     n = 0
                     for f in grp.alive:
-                        if not grp.m.get('undead') and \
+                        if not grp.m.get('unique') and \
+                                not any(has_tag(grp.m, t)
+                                        for t in sp.get('immune', ())) and \
                                 grp.m['level'] <= level + 2 and \
                                 rng.random() < 0.75:
                             f.asleep = rng.randint(2, 4)
@@ -414,31 +445,34 @@ class CombatMode(Mode):
                         % grp.m['plural'], None))
                     continue
                 if e == 'turn':
-                    if not grp.m.get('undead'):
-                        beats.append(('The %s are not undead.' %
-                                      grp.m['plural'], None))
+                    if not has_tag(grp.m, sp.get('tag', 'undead')):
+                        beats.append((w('turn_wrong', grp.m['plural']), None))
                         continue
                     n = 0
+                    # it takes a caster above the monster's level, and
+                    # never works on a unique monster
+                    edge = level - grp.m['level']
+                    chance = 0 if grp.m.get('unique') or edge < 1 else \
+                        min(0.9, 0.4 + 0.1 * edge)
                     for f in grp.alive:
-                        if grp.m['level'] <= level + 1 and rng.random() < 0.7:
+                        if rng.random() < chance:
                             f.hp = 0
                             self.kills.append(grp.kind)
                             n += 1
                     if n:
-                        beats.append(('%d %s crumble to dust!' % (
+                        beats.append((w('turned',
                             n, grp.m['name'] if n == 1 else grp.m['plural']),
                             ('foe', gi)))
                         if not grp.alive:
                             beats.append(('', ('gone', gi)))
                     else:
-                        beats.append(('The %s stand firm.' % grp.m['plural'],
-                                      None))
+                        beats.append((w('turn_fail', grp.m['plural']), None))
                     continue
                 targets = grp.alive if sp['target'] in ('group', 'foes') \
                     else [rng.choice(grp.alive)]
                 for f in targets:
                     dmg = roll(sp['dice'], rng) + level * sp.get('per', 0)
-                    if e == 'smite' and grp.m.get('undead'):
+                    if sp.get('bane') and has_tag(grp.m, sp['bane']):
                         dmg *= 2
                     f.hp -= dmg
                     f.asleep = 0
@@ -460,10 +494,10 @@ class CombatMode(Mode):
                 t.status = 'ok'
             beats.append(('%s is cured.' % t.name, self.snap(g, tgt)))
         elif e == 'ward':
-            self.ward = min(6, self.ward + sp.get('amount', 2))
+            self.ward = max(self.ward, sp.get('amount', 2))
             beats.append(('A shimmering ward surrounds the party.', None))
         elif e == 'bless':
-            self.bless = min(6, self.bless + sp.get('amount', 2))
+            self.bless = max(self.bless, sp.get('amount', 2))
             beats.append(('The party feels blessed.', None))
 
     def hurt(self, g, i, dmg, beats, text):
@@ -492,7 +526,7 @@ class CombatMode(Mode):
             parts = spc.split(':')
             if parts[0] == 'breath' and rng.randint(1, 100) <= int(parts[2]):
                 beats.append(('The %s %s' % (name, m.get('breath_msg',
-                                                         'breathes fire!')),
+                                                         w('breath'))),
                               ('sound', 'trap')))
                 for i in living:
                     c = g.party[i]
@@ -507,7 +541,8 @@ class CombatMode(Mode):
                 i = rng.choice(living)
                 c = g.party[i]
                 dmg = roll(sp.get('dice', '2d6'), rng) + m['level']
-                beats.append(('The %s casts %s!' % (name, sp['name']),
+                beats.append(('The %s %s %s!' % (name, w('casts'),
+                                                  sp['name']),
                               ('sound', 'spell')))
                 self.hurt(g, i, dmg, beats, '%s takes %d damage.'
                           % (c.name, dmg))
@@ -516,7 +551,8 @@ class CombatMode(Mode):
             return
         front = [i for i in living if i < 3]
         targets = front or living
-        if m.get('range') and grp.dist > 10:
+        shooting = bool(m.get('range')) and grp.dist > 10
+        if shooting:
             targets = living
         for h in range(m.get('hits', 1)):
             targets = [i for i in targets if g.party[i].alive]
@@ -528,8 +564,9 @@ class CombatMode(Mode):
             r = rng.randint(1, 20)
             if r == 20 or (r != 1 and r + m['level'] + 1 + ac >= 20):
                 dmg = max(1, roll(m['dmg'], rng))
-                died = self.hurt(g, i, dmg, beats, '%s hits %s for %d damage.'
-                                 % (cap(called(m)), c.name, dmg))
+                verb = m.get('shoots', w('shoots')) if shooting else 'hits'
+                died = self.hurt(g, i, dmg, beats, '%s %s %s for %d damage.'
+                                 % (cap(called(m)), verb, c.name, dmg))
                 if died:
                     continue
                 for spc in m.get('special', []):
@@ -557,8 +594,9 @@ class CombatMode(Mode):
                             beats.append(('%s feels a level of life drain '
                                           'away!' % c.name, self.snap(g, i)))
             else:
-                beats.append(('%s attacks %s but misses.' % (
-                    cap(called(m)), c.name), ('miss',)))
+                verb = m.get('shoots', w('shoots')) if shooting else 'attacks'
+                beats.append(('%s %s %s but misses.' % (
+                    cap(called(m)), verb, c.name), ('miss',)))
 
     # ---------------------------------------------------------- playback
 
@@ -628,7 +666,8 @@ class CombatMode(Mode):
     def win(self, g):
         rng = g.rng
         xp = sum(MONSTERS[k]['xp'] for k in self.kills)
-        gold = sum(roll(MONSTERS[k]['gold'], rng) for k in self.kills)
+        gold = sum(roll(MONSTERS[k].get('gold', '0'), rng)
+                   for k in self.kills)
         alive = [c for c in g.party if c.alive]
         share = xp // max(1, len(alive))
         self.shown.append('Victory! The foes are vanquished.')
@@ -640,18 +679,18 @@ class CombatMode(Mode):
         self.shown.append('Each survivor earns %d experience.' % share)
         if gold:
             g.st.gold += gold
-            self.shown.append('You find %d gold pieces.' % gold)
-        if rng.random() < 0.12 + 0.02 * len(self.kills):
-            iid = rng.choice(['potion', 'potion', 'antidote', 'torch'])
+            self.shown.append(w('found_money', gold))
+        if rules.LOOT and rng.random() < 0.12 + 0.02 * len(self.kills):
+            iid = rng.choice(rules.LOOT)
             who = g.give_party(iid)
             if who:
                 self.shown.append('%s finds %s.' % (who.name,
                                                     a_(ITEMS[iid]['name'])))
         for c in alive:
             if c.can_level() and not before[id(c)]:
-                self.shown.append('%s can train for a new level at the '
-                                  'Guild.' % c.name)
-        g.say('Victory: %d experience each, %d gold.' % (share, gold))
+                self.shown.append(w('can_train', c.name))
+        g.say('Victory: %d experience each, %d %s.' % (share, gold,
+                                                       w('money')))
         g.sound.play('coin')
         self.phase = 'won'
 

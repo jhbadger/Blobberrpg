@@ -20,6 +20,9 @@ from . import rules
 from .rules import Character, ITEMS, SPELLS, roll, bonus
 from . import art
 from . import textures
+from . import words
+from . import music
+from .words import w
 
 W, H = 640, 400
 VX, VY, VW, VH = 20, 20, 320, 224          # the 3D view
@@ -64,6 +67,7 @@ class State:
         self.sight = 0
         self.steps = 0
         self.won = False
+        self.supplies = {}          # ammunition and the like, by kind
 
     def to_json(self):
         d = dict(self.__dict__)
@@ -223,9 +227,9 @@ class TextInput(Menu):
         y = self.text_end + 8
         s.rect(TX, y - 2, TW, 15, rgb('#f2e2b8'))
         s.frame(TX, y - 2, TW, 15, INK_DIM)
-        w = s.text(TX + 4, y + 1, self.value, INK)
+        tw = s.text(TX + 4, y + 1, self.value, INK)
         if int(self.blink * 2) % 2 == 0:
-            s.rect(TX + 5 + w, y, 5, 10, INK)
+            s.rect(TX + 5 + tw, y, 5, 10, INK)
 
     def update(self, g, dt):
         old = int(self.blink * 2)
@@ -284,6 +288,9 @@ class Game:
         self.kits = dict(KITS)
         self.kits.update(getattr(gdef, 'KITS', {}))
         self.hooks = getattr(gdef, 'HOOKS', {})
+        words.setup(getattr(gdef, 'WORDS', {}))
+        self.tunes = dict(music.TUNES)
+        self.tunes.update(getattr(gdef, 'MUSIC', {}))
         self._build_base()
         from .modes import TitleMode
         self.push(TitleMode())
@@ -440,6 +447,7 @@ class Game:
                 c.give(iid)
             st.party.append(c)
         st.gold = getattr(d, 'GOLD', 100)
+        st.supplies = dict(getattr(d, 'SUPPLIES', {}))
         lid, x, y, f = d.START
         st.level, st.x, st.y, st.facing = lid, x, y, f
         self.st = st
@@ -647,6 +655,9 @@ class Game:
                 s.text(TX - 2, y, font.RIGHT, INK_HI)
             if hk:
                 s.text(TX + 8, y, hk + ')', col)
+            if '\t' in label:
+                label, right = label.split('\t', 1)
+                s.text(TX + TW - 10, y, right, col, align='right')
             s.text(TX + 22, y, label, col)
             rects.append((i, TX - 4, y - 1, TX + TW + 4, y + font.LINE - 1))
             y += font.LINE
@@ -657,9 +668,9 @@ class Game:
         return rects
 
     def draw_roster(self, s, sel=None):
-        cols = [(RX + 10, '#'), (RX + 24, 'Name'), (RX + 150, 'Class'),
+        cols = [(RX + 10, '#'), (RX + 24, 'Name'), (RX + 150, w('class')),
                 (RX + 262, 'Lv'), (RX + 296, 'AC'), (RX + 330, 'Hits'),
-                (RX + 420, 'Spell Pts'), (RX + 520, 'Status')]
+                (RX + 420, w('pts')), (RX + 520, 'Status')]
         for x, t in cols:
             s.text(x, RY + 5, t, ROSTER_HEAD)
         if not self.st:
@@ -765,8 +776,27 @@ class Game:
         self.mode.click(self, x, y)
         self.dirty = True
 
+    def music_for(self):
+        """The tune that suits what is on the screen."""
+        from .modes import TitleMode, EndMode, GameOverMode
+        from .combat import CombatMode
+        kinds = [type(m) for m in self.modes]
+        if not self.modes or TitleMode in kinds or not self.st:
+            return 'title'
+        if GameOverMode in kinds:
+            return None
+        if EndMode in kinds:
+            return 'victory'
+        if CombatMode in kinds:
+            return 'combat'
+        L = self.level
+        return L.spec.get('music') or ('town' if L.outdoor else 'dungeon')
+
     def update(self, dt):
         self.clock += dt
+        if hasattr(self.sound, 'tick'):
+            self.sound.music(self.music_for())
+            self.sound.tick()
         if self.st and self.levels[self.st.level].theme.get('falling') and \
                 int(self.clock * 12) != int((self.clock - dt) * 12):
             self.dirty = True
@@ -918,7 +948,7 @@ class Game:
         if st.light_turns > 0:
             st.light_turns -= 1
             if st.light_turns == 0:
-                self.say('Your light flickers and goes out.', INK_DIM)
+                self.say(w('light_out'), INK_DIM)
         if st.sight > 0:
             st.sight -= 1
             if st.sight == 0:
@@ -1093,10 +1123,10 @@ class Game:
 
     def random_encounter(self, nxt):
         L = self.level
-        total = sum(w for w, _ in L.encounters)
+        total = sum(wt for wt, _ in L.encounters)
         r = self.rng.uniform(0, total)
-        for w, groups in L.encounters:
-            r -= w
+        for wt, groups in L.encounters:
+            r -= wt
             if r <= 0:
                 break
         gs = []
@@ -1125,7 +1155,7 @@ class Game:
             gold = roll(ch.get('gold', '0'), self.rng)
             if gold:
                 self.st.gold += gold
-                lines.append('Inside are %d gold pieces.' % gold)
+                lines.append(w('chest_money', gold))
             for iid in ch.get('items', []):
                 who = self.give_party(iid)
                 if who:
@@ -1329,7 +1359,7 @@ class Game:
         casters = [(i, c) for i, c in enumerate(self.party)
                    if c.able and c.spells()]
         if not casters:
-            self.say('No one can cast a spell now.')
+            self.say(w('none_cast'))
             return
 
         def pick_caster(i):
@@ -1339,18 +1369,18 @@ class Game:
                 sp = SPELLS[sid]
                 usable = sp['effect'] in ('heal', 'cure', 'light', 'locate',
                                           'phase', 'recall', 'sight', 'raise')
-                opts.append(('%-14s %2d SP' % (sp['name'], sp['sp']), sid,
-                             usable and c.sp >= sp['sp']))
-            self.ask('%s casts' % c.name, opts,
+                opts.append(('%s\t%d %s' % (sp['name'], sp['sp'], w('sp')),
+                             sid, usable and c.sp >= sp['sp']))
+            self.ask('%s %s' % (c.name, w('casts')), opts,
                      lambda sid: self.pick_target(i, sid),
-                     '%d of %d spell points.' % (c.sp, c.maxsp),
+                     '%d of %d %s.' % (c.sp, c.maxsp, w('points')),
                      on_cancel=lambda: None, roster_sel=i)
 
         if len(casters) == 1:
             pick_caster(casters[0][0])
         else:
-            self.ask('Who casts?', [('%s (%d SP)' % (c.name, c.sp), i)
-                                    for i, c in casters],
+            self.ask(w('who_casts'), [('%s (%d %s)' % (c.name, c.sp, w('sp')),
+                                       i) for i, c in casters],
                      pick_caster, on_cancel=lambda: None)
 
     def pick_target(self, ci, sid):
@@ -1369,13 +1399,12 @@ class Game:
         sp = SPELLS[sid]
         if not free:
             if c.sp < sp['sp']:
-                self.say('%s has too few spell points.' % c.name)
+                self.say(w('too_few', c.name))
                 return
             c.sp -= sp['sp']
         lvl = power or c.level
         if self.antimagic():
-            self.say('The spell fizzles. Something here smothers magic.',
-                     INK_HI)
+            self.say(w('fizzle'), INK_HI)
             self.sound.play('bump')
             return
         e = sp['effect']
@@ -1387,7 +1416,7 @@ class Game:
                 if t.alive:
                     n = roll(sp['dice'], self.rng) + lvl * sp.get('per', 0)
                     t.hp = min(t.maxhp, t.hp + n)
-            self.say('%s casts %s.' % (c.name, sp['name']))
+            self.say('%s %s %s.' % (c.name, w('casts'), sp['name']))
         elif e == 'cure':
             t = self.party[target]
             if t.status in ('poisoned', 'paralyzed', 'asleep'):
@@ -1470,21 +1499,24 @@ class Game:
             n = roll(it.get('amount', '2d8'), self.rng)
             c.hp = min(c.maxhp, c.hp + n)
             self.sound.play('heal')
-            self.say('%s drinks a %s.' % (c.name, it['name']))
+            self.say('%s %s the %s.' % (c.name, it.get('verb', 'uses'),
+                                        it['name']))
         elif use == 'cure':
             c.pack.pop(pi)
             if c.status in ('poisoned', 'paralyzed'):
                 c.status = 'ok'
             self.sound.play('heal')
-            self.say('%s drinks an %s.' % (c.name, it['name']))
+            self.say('%s %s the %s.' % (c.name, it.get('verb', 'uses'),
+                                        it['name']))
         elif use == 'light':
             if self.level.outdoor:
-                self.say("It's bright enough out here.")
+                self.say(w('too_bright'))
                 return
             c.pack.pop(pi)
             self.st.light_r = it.get('light', 3.0)
             self.st.light_turns = it.get('turns', 120)
-            self.say('%s lights a %s.' % (c.name, it['name'].lower()))
+            self.say('%s %s the %s.' % (c.name, it.get('verb', 'uses'),
+                                        it['name'].lower()))
             self.mark_seen()
         elif use == 'spell':
             sp = SPELLS[it['spell']]
@@ -1493,7 +1525,8 @@ class Game:
                 self.say('That scroll is for fighting.')
                 return
             c.pack.pop(pi)
-            self.say('%s reads the %s.' % (c.name, it['name']))
+            self.say('%s %s the %s.' % (c.name, it.get('verb', 'uses'),
+                                        it['name']))
             self.cast_out(ci, it['spell'], ci, free=True, power=5)
         else:
             self.say("%s can't use the %s like that." % (c.name, it['name']))

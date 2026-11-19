@@ -68,7 +68,7 @@ CLASSES = {
                     text='A holy warrior: fights nearly as well as a fighter '
                          'and learns priest prayers from third level.'),
     'Rogue':   dict(abbr='RO', hd=6, atk=0.75, magic=None, every=0,
-                    gear={'blade', 'blunt', 'light'},
+                    gear={'blade', 'blunt', 'light', 'bow'},
                     text='Picks locks, disarms traps on chests, and strikes '
                          'hard from behind the front line.'),
     'Priest':  dict(abbr='PR', hd=8, atk=0.67, magic='priest', every=0,
@@ -98,21 +98,28 @@ def xp_for(level):
 # gear: see can_use().
 
 ITEMS = {
-    'dagger':     dict(name='Dagger', kind='weapon', dmg='1d4', price=6),
+    'dagger':     dict(name='Dagger', kind='weapon', dmg='1d4', price=6,
+                       verb='stabs'),
     'staff':      dict(name='Quarterstaff', kind='weapon', dmg='1d6',
-                       price=5),
+                       price=5, verb='strikes'),
     'club':       dict(name='Club', kind='weapon', dmg='1d6', price=4,
-                       gear='blunt'),
+                       gear='blunt', verb='clubs'),
     'mace':       dict(name='Mace', kind='weapon', dmg='1d6+1', price=18,
-                       gear='blunt'),
+                       gear='blunt', verb='smashes'),
     'shortsword': dict(name='Short Sword', kind='weapon', dmg='1d6',
-                       hit=1, price=22, gear='blade'),
+                       hit=1, price=22, gear='blade', verb='slashes'),
     'longsword':  dict(name='Long Sword', kind='weapon', dmg='1d8', hit=1,
-                       price=45, gear='heavy'),
+                       price=45, gear='heavy', verb='slashes'),
     'warhammer':  dict(name='War Hammer', kind='weapon', dmg='1d8+1',
-                       price=60, gear='hammer'),
+                       price=60, gear='hammer', verb='hammers'),
     'battleaxe':  dict(name='Battle Axe', kind='weapon', dmg='1d10', price=70,
-                       gear='heavy'),
+                       gear='heavy', verb='hacks'),
+    'shortbow':   dict(name='Short Bow', kind='weapon', dmg='1d6', price=35,
+                       gear='bow', range=50, ammo='arrows', verb='shoots'),
+    'crossbow':   dict(name='Crossbow', kind='weapon', dmg='1d8+1', price=80,
+                       gear='heavy', range=40, ammo='arrows', verb='shoots'),
+    'arrows':     dict(name='Arrows (20)', kind='ammo', ammo='arrows',
+                       amount=20, price=8),
     'robes':      dict(name='Robes', kind='armor', ac=1, price=6),
     'leather':    dict(name='Leather Armour', kind='armor', ac=2, price=30,
                        gear='light'),
@@ -131,21 +138,28 @@ ITEMS = {
     'gauntlets':  dict(name='Gauntlets', kind='gloves', ac=1, price=40,
                        gear='medium'),
     'potion':     dict(name='Healing Potion', kind='potion', use='heal',
-                       amount='3d8+2', price=35),
-    'antidote':   dict(name='Antidote', kind='potion', use='cure', price=20),
+                       amount='3d8+2', price=35, verb='drinks'),
+    'antidote':   dict(name='Antidote', kind='potion', use='cure', price=20,
+                       verb='drinks'),
     'torch':      dict(name='Torch', kind='torch', use='light', light=3.2,
-                       turns=160, price=4),
+                       turns=160, price=4, verb='lights'),
     'firescroll': dict(name='Scroll of Flame', kind='scroll', use='spell',
-                       spell='FLAM', price=60),
+                       spell='FLAM', price=60, verb='reads'),
     'returnscroll': dict(name='Scroll of Return', kind='scroll', use='spell',
-                         spell='HOME', price=120),
+                         spell='HOME', price=120, verb='reads'),
 }
+
+
+# what a won fight may leave behind, now and then
+LOOT = ['potion', 'potion', 'antidote', 'torch']
 
 
 def can_use(cls, item):
     """Whether a class may wield or wear an item.  An item's gear group is
-    'any' (the default), 'blade', 'blunt', 'heavy', 'hammer', 'light',
-    'medium' or 'plate'; a class lists the groups it may use, or 'all'."""
+    'any' (the default) or a name such as 'blade', 'blunt', 'heavy',
+    'hammer', 'bow', 'light', 'medium' or 'plate'; a class lists the groups
+    it may use, or 'all'.  A weapon with 'range' (in feet) can be used from
+    any rank; with 'ammo' each shot uses one of the party's supply of it."""
     groups = CLASSES[cls]['gear']
     g = item.get('gear', 'any')
     return g == 'any' or 'all' in groups or g in groups
@@ -180,7 +194,8 @@ SPELLS = {
                  target='party', effect='ward', amount=2, combat=True,
                  text='The whole party is harder to hit this fight.'),
     'DOZE': dict(name='Slumber', school='mage', level=3, sp=6,
-                 target='group', effect='sleep', combat=True,
+                 target='group', effect='sleep', immune=['undead'],
+                 combat=True,
                  text='Puts a group of the living to sleep.'),
     'FROS': dict(name='Frost Storm', school='mage', level=4, sp=11,
                  target='foes', effect='damage', dice='3d6', per=1,
@@ -205,7 +220,7 @@ SPELLS = {
                  target='ally', effect='cure', combat=True,
                  text='Cures poison and paralysis.'),
     'TURN': dict(name='Turn Undead', school='priest', level=2, sp=5,
-                 target='group', effect='turn', combat=True,
+                 target='group', effect='turn', tag='undead', combat=True,
                  text='Holy power destroys a group of the undead.'),
     'SIGH': dict(name='Truesight', school='priest', level=3, sp=5,
                  target='none', effect='sight', turns=200, combat=False,
@@ -215,6 +230,7 @@ SPELLS = {
                  combat=True, text='Heals the whole party.'),
     'SMIT': dict(name='Smite', school='priest', level=4, sp=8,
                  target='foe', effect='smite', dice='4d8', per=1,
+                 bane='undead',
                  combat=True, text='Holy wrath on one foe, doubled '
                                    'against the undead.'),
     'RAIS': dict(name='Raise Dead', school='priest', level=5, sp=20,
@@ -245,9 +261,12 @@ def known_spells(cls, level):
 # ---------------------------------------------------------------- monsters
 #
 # hp: dice; ac: lower is harder to hit (10 = none); hits: attacks per round
-# special: list of 'poison', 'paralyze', 'drain', 'breath:3d6',
-# 'cast:FLAM' ...; undead: Turn Undead works; range: attacks from 20'+
-# group: (min, max) when met at random.
+# special: list of 'poison:%', 'paralyze:%', 'drain:%', 'breath:3d6:%',
+# 'cast:FLAM:%'; tags: words spells can single out (Turn Undead looks for
+# 'undead'); range: attacks from 20' and further, with 'shoots' saying how
+# ('hurls a dagger at'); unique: called "the X", not "a X";
+# acts: actions a round (a boss may take two); group: (min, max) when met
+# at random.
 
 MONSTERS = {
     'rat':      dict(name='Giant Rat', plural='Giant Rats', art='rat',
@@ -264,39 +283,41 @@ MONSTERS = {
                      xp=20, gold='2d8', group=(1, 2), special=['poison:30']),
     'skeleton': dict(name='Skeleton', plural='Skeletons', art='skeleton',
                      level=2, hp='2d8', ac=6, hits=1, dmg='1d6+1', xp=22,
-                     gold='2d6', group=(2, 4), undead=True),
+                     gold='2d6', group=(2, 4), tags=['undead']),
     'zombie':   dict(name='Zombie', plural='Zombies', art='zombie',
                      level=3, hp='3d8+3', ac=8, hits=1, dmg='1d8+1',
-                     xp=30, gold='2d8', group=(2, 4), undead=True),
+                     xp=30, gold='2d8', group=(2, 4), tags=['undead']),
     'spider':   dict(name='Giant Spider', plural='Giant Spiders',
                      art='spider', level=3, hp='3d8', ac=5, hits=1,
                      dmg='1d6', xp=40, gold='3d6', group=(1, 3),
                      special=['poison:35']),
     'ghoul':    dict(name='Ghoul', plural='Ghouls', art='ghoul', level=4,
                      hp='4d8', ac=5, hits=2, dmg='1d4+1', xp=55,
-                     gold='3d10', group=(1, 4), undead=True,
+                     gold='3d10', group=(1, 4), tags=['undead'],
                      special=['paralyze:12']),
     'cultist':  dict(name='Ash Cultist', plural='Ash Cultists',
                      art='cultist', level=4, hp='4d6', ac=7, hits=1,
                      dmg='1d6', xp=60, gold='4d10', group=(1, 3), range=True,
+                     shoots='hurls a dagger at',
                      special=['cast:ARBO:35']),
     'wraith':   dict(name='Wraith', plural='Wraiths', art='wraith', level=6,
                      hp='5d8', ac=3, hits=1, dmg='1d8', xp=110, gold='4d12',
-                     group=(1, 3), undead=True, special=['drain:15']),
+                     group=(1, 3), tags=['undead'], special=['drain:15']),
     'orc':      dict(name='Orc Brute', plural='Orc Brutes', art='orc',
                      level=5, hp='5d10', ac=5, hits=1, dmg='2d6', xp=80,
                      gold='5d10', group=(2, 4)),
     'imp':      dict(name='Fire Imp', plural='Fire Imps', art='imp',
                      level=5, hp='4d8', ac=3, hits=1, dmg='1d6', xp=90,
                      gold='4d10', group=(1, 3), range=True,
+                     shoots='flings fire at',
                      special=['breath:2d6:30']),
     'thief':    dict(name='Grave Robber', plural='Grave Robbers',
                      art='rogue', level=2, hp='2d8', ac=7, hits=1,
                      dmg='1d6', xp=25, gold='4d10', group=(2, 4)),
     'deathknight': dict(name='Death Knight', plural='Death Knights',
-                        art='deathknight', level=8, hp='9d10', ac=0, hits=2,
+                        art='deathknight', level=7, hp='9d10', ac=0, hits=2,
                         dmg='1d10+2', xp=400, gold='8d20', group=(1, 2),
-                        undead=True),
+                        tags=['undead']),
 }
 
 # --------------------------------------------------------------- characters
@@ -463,6 +484,23 @@ class Character:
         self.equip[slot] = None
         self.pack.append(iid)
         return None
+
+
+def has_tag(m, tag):
+    return tag in m.get('tags', ()) or (tag == 'undead' and m.get('undead'))
+
+
+# tags whose monsters are "destroyed" rather than killed
+UNLIVING = {'undead'}
+
+
+def death_text(m):
+    from .words import w
+    if m.get('death'):
+        return m['death']
+    if any(has_tag(m, t) for t in UNLIVING):
+        return w('destroyed', m['name'])
+    return w('dies', m['name'])
 
 
 # ------------------------------------------------------------- monster groups

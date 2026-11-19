@@ -7,13 +7,14 @@ from .game import (Mode, Menu, Say, W, H, VX, VY, VW, VH, PX, PY, PW, PH,
 from .gfx import rgb, mix
 from . import font
 from . import art
+from .words import w
 from .rules import (ITEMS, SPELLS, SLOTS, STAT_NAMES, STATS, xp_for, bonus,
                     can_use, PACK)
 from .world import DIRS
 
 HELP = """Walk: arrow keys or W A S D (Q and E step sideways).
 Enter or Space: deal with what's in front of you (doors, shops) or here.
-C: cast a spell.   1-6: a character's sheet (items, equipment).
+C: %s.   1-6: a character's sheet (items, equipment).
 M: the map.   F: search for hidden doors.
 Esc: the game menu (save, sound, quit).   ?: this help.
 
@@ -189,7 +190,7 @@ class ExploreMode(Mode):
             if i < len(g.party):
                 g.push(SheetMode(i))
         elif k == '?' or k == 'h' or k == 'f1':
-            g.tell(HELP, title='Help', more='')
+            g.tell(HELP % w('help_cast'), title='Help', more='')
         elif k == 'esc':
             game_menu(g)
 
@@ -240,12 +241,15 @@ def game_menu(g):
         elif v == 'sound':
             g.sound.on = not g.sound.on
             g.say('Sound is %s.' % ('on' if g.sound.on else 'off'))
+        elif v == 'music':
+            g.sound.music_on = not g.sound.music_on
+            g.say('Music is %s.' % ('on' if g.sound.music_on else 'off'))
         elif v == 'speed':
             g.speed = {1.0: 0.5, 0.5: 2.0, 2.0: 1.0}[g.speed]
             g.say('Fights now play %s.' % {0.5: 'fast', 1.0: 'at normal '
                                            'speed', 2.0: 'slowly'}[g.speed])
         elif v == 'help':
-            g.tell(HELP, title='Help', more='')
+            g.tell(HELP % w('help_cast'), title='Help', more='')
         elif v == 'title':
             g.save()
             g.replace_all(TitleMode())
@@ -257,6 +261,9 @@ def game_menu(g):
         ('Save', 'save'),
         ('Sound: %s' % ('on' if g.sound.on else 'off'), 'sound',
          g.sound.available),
+        ('Music: %s' % ('on' if getattr(g.sound, 'music_on', False)
+                        else 'off'), 'music',
+         g.sound.available and g.sound.on),
         ('Fight speed: %s' % {0.5: 'fast', 1.0: 'normal', 2.0: 'slow'}[g.speed],
          'speed'),
         ('Help', 'help'),
@@ -377,10 +384,10 @@ class SheetMode(Mode):
 
     def draw(self, g, s):
         c = g.party[self.i]
-        x0, y0, w, h = 8, 8, 624, 266
-        s.rect(x0, y0, w, h, rgb('#1e1a16'))
-        s.bevel(x0, y0, w, h, rgb('#8a7a5a'), rgb('#0a0806'), 2)
-        s.frame(x0 + 4, y0 + 4, w - 8, h - 8, rgb('#4a3e2a'))
+        x0, y0, ww, hh = 8, 8, 624, 266
+        s.rect(x0, y0, ww, hh, rgb('#1e1a16'))
+        s.bevel(x0, y0, ww, hh, rgb('#8a7a5a'), rgb('#0a0806'), 2)
+        s.frame(x0 + 4, y0 + 4, ww - 8, hh - 8, rgb('#4a3e2a'))
         gold = rgb('#ffd860')
         txt = rgb('#e8dcc0')
         dim = rgb('#9a8e78')
@@ -402,15 +409,21 @@ class SheetMode(Mode):
                 s.text(x + 118, y, '%+d' % b, dim)
             y += font.LINE
         y += 6
-        hit = c.to_hit()
+        weapon = c.item('weapon') or {}
+        hit = c.to_hit() + (bonus(c.dx) - bonus(c.st)
+                            if weapon.get('range') else 0)
         info = [('Hit points', '%d/%d' % (c.hp, c.maxhp)),
-                ('Spell points', '%d/%d' % (c.sp, c.maxsp)),
-                ('Armour class', str(c.ac())),
+                (w('Points'), '%d/%d' % (c.sp, c.maxsp)),
+                (w('armour_class'), str(c.ac())),
                 ('To hit', '%+d' % hit),
                 ('Damage', c.damage_dice() + ('%+d' % bonus(c.st)
-                                              if bonus(c.st) else '')),
+                                              if bonus(c.st) and not
+                                              weapon.get('range') else '')),
                 ('Attacks', str(c.attacks())),
                 ('Condition', c.status.capitalize())]
+        if weapon.get('ammo'):
+            info.insert(5, (weapon['ammo'].capitalize(),
+                            str(g.st.supplies.get(weapon['ammo'], 0))))
         for a, b in info:
             s.text(x, y, a, txt)
             s.text(x + 150, y, b, gold, align='right')
@@ -420,7 +433,7 @@ class SheetMode(Mode):
         y = y0 + 34
         spells = c.spells()
         if spells:
-            s.text(sx, y, 'Spells', gold)
+            s.text(sx, y, w('Magic'), gold)
             y += font.LINE + 2
             for sid in spells:
                 sp = SPELLS[sid]
@@ -444,7 +457,8 @@ class SheetMode(Mode):
                 s.rect(ex - 4, y - 1, 270, font.LINE, rgb('#4a3c26'))
             if kind == 'equip':
                 iid = c.equip.get(v)
-                s.text(ex, y, {'armor': 'Armour'}.get(v, v.capitalize()), dim)
+                s.text(ex, y, w('Armour') if v == 'armor' else v.capitalize(),
+                       dim)
                 s.text(ex + 56, y, ITEMS[iid]['name'] if iid else '-',
                        txt if iid else dim)
             else:
@@ -461,7 +475,7 @@ class SheetMode(Mode):
         # what the selected thing is
         kind, v = ents[self.sel]
         iid = c.equip.get(v) if kind == 'equip' else c.pack[v]
-        y = y0 + h - 38
+        y = y0 + hh - 38
         if iid:
             it = ITEMS[iid]
             desc = describe(it)
@@ -469,7 +483,7 @@ class SheetMode(Mode):
                     'weapon', 'armor', 'shield', 'helm', 'gloves', 'ring'):
                 desc += '  (%s cannot use this)' % c.cls
             s.text(ex - 4, y - 14, desc[:52], dim)
-        s.text(x0 + 14, y0 + h - 18,
+        s.text(x0 + 14, y0 + hh - 18,
                'Enter: equip/use/remove   T: trade   D: drop   '
                '<- ->: next character   Esc: back', dim)
 
@@ -569,16 +583,22 @@ def describe(it):
         d = 'Weapon, %s damage' % it['dmg']
         if it.get('hit'):
             d += ', %+d to hit' % it['hit']
+        if it.get('range'):
+            d += ", range %d'" % it['range']
     elif k in ('armor', 'shield', 'helm', 'gloves', 'ring'):
         d = '%s, armour %+d' % ({'armor': 'Armour', 'shield': 'Shield',
                                  'helm': 'Helm', 'gloves': 'Gloves',
                                  'ring': 'Ring'}[k], it.get('ac', 0))
-    elif k == 'potion':
-        d = 'Potion: drink it (Enter)'
-    elif k == 'scroll':
-        d = 'Scroll of %s' % SPELLS[it['spell']]['name']
-    elif k == 'torch':
-        d = 'Light it in the dark (Enter)'
+    elif it.get('use') == 'heal':
+        d = 'Restores hit points (Enter)'
+    elif it.get('use') == 'cure':
+        d = 'Cures poison and paralysis (Enter)'
+    elif it.get('use') == 'spell':
+        d = '%s (Enter)' % SPELLS[it['spell']]['name']
+    elif it.get('use') == 'light':
+        d = 'Light in the dark (Enter)'
+    elif k == 'ammo':
+        d = 'Ammunition'
     elif k == 'key':
         d = 'A key. It opens something.'
     else:
@@ -586,7 +606,7 @@ def describe(it):
     if it.get('text') and k != 'quest':
         d = it['text']
     if it.get('price'):
-        d += '  Worth %d gold' % (it['price'] // 2)
+        d += '  Worth %d %s' % (it['price'] // 2, w('money'))
     return d
 
 

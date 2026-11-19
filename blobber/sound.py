@@ -1,7 +1,11 @@
-"""Synthesized sound effects, written once as small WAV files and played
-with whatever the system has (afplay on macOS, paplay or aplay on Linux,
-winsound on Windows).  With none of these the game is silent."""
+"""Synthesized sound effects and music, written once as WAV files and
+played with whatever the system has (afplay on macOS, paplay or aplay on
+Linux, winsound on Windows for effects only).  With none of these the game
+is silent.  Music is rendered in the background the first time and cached
+in ~/.cache/<game>, named by a checksum so an edited tune is rendered
+again."""
 
+import json
 import math
 import os
 import random
@@ -9,7 +13,10 @@ import shutil
 import struct
 import subprocess
 import sys
+import threading
+import time
 import wave
+import zlib
 
 RATE = 22050
 
@@ -138,6 +145,14 @@ class Sound:
                     break
         self.ready = set()
         self.last = {}
+        self.music_on = True
+        self.tunes = {}             # name -> wav path, once rendered
+        self.lengths = {}
+        self.loops = {}
+        self.want = None
+        self.playing = None
+        self.proc = None
+        self.deadline = 0.0
 
     @property
     def available(self):
@@ -172,3 +187,70 @@ class Sound:
                                  stderr=subprocess.DEVNULL)
         except OSError:
             pass
+
+    # ------------------------------------------------------------ music
+
+    def prepare_music(self, tunes, first=('title',)):
+        """Render tunes in a background thread, the first ones first."""
+        if not self.cmd:
+            return
+        from . import music
+        order = sorted(tunes, key=lambda n: (n not in first, n))
+
+        def work():
+            for name in order:
+                tune = tunes[name]
+                try:
+                    sig = zlib.crc32(json.dumps([tune, music.RATE],
+                                                sort_keys=True).encode())
+                    path = os.path.join(self.dir, 'music-%s-%08x.wav'
+                                        % (name, sig))
+                    if not os.path.exists(path):
+                        os.makedirs(self.dir, exist_ok=True)
+                        write_wav(path + '.tmp', music.render(tune))
+                        os.replace(path + '.tmp', path)
+                    with wave.open(path) as w:
+                        self.lengths[path] = w.getnframes() / w.getframerate()
+                    self.loops[name] = tune.get('loop', True)
+                    self.tunes[name] = path
+                except (OSError, ValueError, KeyError):
+                    pass
+        threading.Thread(target=work, daemon=True).start()
+
+    def music(self, name):
+        """Ask for a tune (None for silence); tick() makes it so."""
+        self.want = name
+
+    def tick(self):
+        want = self.want if (self.on and self.music_on) else None
+        path = self.tunes.get(want)
+        proc = self.proc
+        running = proc is not None and proc.poll() is None
+        if running and time.monotonic() > self.deadline:
+            self.stop_music()           # a stuck player: start over
+            running = False
+        if want == self.playing and running:
+            return
+        if want != self.playing:
+            self.stop_music()
+            self.playing = None
+        elif not running and not self.loops.get(want, True):
+            return                      # a fanfare plays once
+        if path and self.cmd:
+            try:
+                self.proc = subprocess.Popen(
+                    self.cmd + [path], stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+                self.playing = want
+                self.deadline = time.monotonic() + \
+                    self.lengths.get(path, 60) + 5
+            except OSError:
+                self.cmd = None
+
+    def stop_music(self):
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self.proc.terminate()
+            except OSError:
+                pass
+        self.proc = None
