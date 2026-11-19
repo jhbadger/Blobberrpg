@@ -288,7 +288,8 @@ def find_player():
 class Sound:
     def __init__(self, game_id):
         self.on = True
-        self.dir = os.path.join(os.path.expanduser('~'), '.cache', game_id)
+        from . import home_dir
+        self.dir = os.path.join(home_dir(), '.cache', game_id)
         self.player = find_player()
         self.procs = []
         self.ready = set()

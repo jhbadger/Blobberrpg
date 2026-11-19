@@ -104,6 +104,29 @@ buttons of its own, and tap choices on the scroll. Names and riddle
 answers have an on-screen keyboard. F11 toggles full screen. The window
 scales to fit whatever size you give it.
 
+### Apps
+
+```bash
+./benediction --build-app ~/Applications
+```
+
+This writes a macOS app with the game's icon (`Benediction.app`, or `The
+Ashen Crypt.app`) into the folder, next to the script if no folder is
+given. The app holds a copy of the game and the engine and starts with
+the Python that built it, so rebuild it after changing either.
+`--icon-png SIZE [OUT.png]` writes just the icon.
+
+```bash
+./benediction --build-android ~/benediction-android
+```
+
+This writes a Buildozer project for an Android app: the game as
+`main.py`, the engine, the icon, a `buildozer.spec` (kept if you've
+edited it), and the same `build.sh` and `tar` the tilerpgs use. Then run
+`build.sh` there to build in Docker; the APK lands in `bin/`. The app uses
+a Kivy front end (`blobber/kivyshell.py`), since Android has no Tk.
+`--kivy` runs that front end on the desktop too, if Kivy is installed.
+
 ### On Android
 
 The games run in Pydroid 3 like the tilerpgs: open `ashencrypt` or
@@ -120,9 +143,11 @@ at a time. Only the first three in the marching order can fight hand to
 hand; anyone with a bow or crossbow can shoot from any rank, using up the
 party's arrows (the Armoury sells more).
 
-Each game saves to `~/.<game>.json` (`~/.ashencrypt.json`,
+Each game saves itself to `~/.<game>.json` (`~/.ashencrypt.json`,
 `~/.benediction.json`) whenever you change level, rest at the inn or
-barracks, or quit.
+barracks, or quit; Continue on the title screen picks up from there. The
+game menu (Esc) also saves in and loads from six slots, at any time
+outside a fight, and the title screen can load them too.
 
 ## The engine
 
@@ -147,6 +172,8 @@ barracks, or quit.
 | `words.py` | every word the engine puts on screen, which a game can change |
 | `balance.py` | a simulated player that measures a game's difficulty |
 | `tkshell.py` | the Tk window |
+| `kivyshell.py` | the Kivy window, for the Android app |
+| `build.py` | the icon, the macOS app and the Android project |
 
 The whole screen, text included, is drawn into one framebuffer in pure
 Python, and the front end only shows the result. So a Kivy front end (for
@@ -165,8 +192,8 @@ A game is a script that defines a handful of names and calls
 game that replaces the whole fantasy ruleset, and keeps its art in a
 module beside it (`benediction_art.py`).
 
-- `ID`, `TITLE`, `SUBTITLE`, `TITLE_ART`, `INTRO` (pages), `WELCOME`,
-  `DEATH`
+- `ID`, `TITLE`, `SUBTITLE`, `TITLE_ART`, `ICON` (a picture), `INTRO`
+  (pages), `WELCOME`, `DEATH`
 - `PARTY`: the starting party, `GOLD`, and `START = (level, x, y, facing)`
   (facing is 0 to 3 for north, east, south and west)
 - `LEVELS`: each level has a `name`, a `map` (rows of characters), a

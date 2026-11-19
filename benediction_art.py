@@ -1070,6 +1070,14 @@ def _t():
                   rows=(20, 22, 22), grime=0.3, jitter=0.05)
 
 
+@picture('vigil_icon', 64, 64)
+def _p(p):
+    mats(p)
+    p.rect(2, 2, 60, 60, 'iron', lum=0.3)
+    p.rect(2, 2, 60, 3, 'redtrim', lum=0.6)
+    emblem(p, 32, 32, 26)
+
+
 @picture('vigil_ornament', 44, 40)
 def _p(p):
     mats(p)

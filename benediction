@@ -34,6 +34,7 @@ ID = 'benediction'
 TITLE = 'Benediction'
 SUBTITLE = 'Cleanse the wreck. Recover the relics. Faith is your armour.'
 TITLE_ART = 'title'
+ICON = 'vigil_icon'
 
 INTRO = [
     "The forty-first millennium of the Imperium of Terra. Nine hundred years "

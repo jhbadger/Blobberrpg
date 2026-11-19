@@ -226,6 +226,48 @@ class View:
             self._spr[key] = img
         return img
 
+    # ------------------------------------------------------- preparing
+
+    def slot_keys(self, R):
+        """Every slot the view can draw with light radius R, nearest (and
+        so biggest) first."""
+        D = self.depth_for(R)
+        keys = []
+        for k in range(0, D + 1):
+            for x in range(-k - 1, k + 2):
+                if k >= 1:
+                    keys.append(('w', k, x))
+                if x:
+                    keys.append(('s', k, x))
+        floors = [(k, x) for (k, x) in self.floor_keys if k <= D]
+        keys += [('f', k, x) for (k, x) in floors]
+        keys += [('c', k, x) for (k, x) in floors]
+        return keys
+
+    def prepare(self, R, fog, walls, floors, ceils, sprites):
+        """A generator that builds, a step at a time, everything drawing
+        these textures and sprites at light R will need, so that walking
+        into new places doesn't stall.  Run it between frames."""
+        fog = rgb(fog)
+        for tex in list(walls) + list(floors) + list(ceils):
+            self.levels(tex, fog)
+            yield
+        keys = self.slot_keys(R)
+        for key in keys:
+            self._index(key, R)
+            yield
+        for key in keys:
+            texs = walls if key[0] in 'ws' else \
+                floors if key[0] == 'f' else ceils
+            for tex in texs:
+                self._rows(key, tex, R, fog)
+            yield
+        if self.sprite_source:
+            for name in sprites:
+                for k in range(1, self.depth_for(R) + 1):
+                    self._sprite(name, k, R, fog)
+                    yield
+
     # ------------------------------------------------------------ drawing
 
     def depth_for(self, R):

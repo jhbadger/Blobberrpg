@@ -56,7 +56,7 @@ class TkShell:
 
     def set_icon(self):
         try:
-            img = art.get('icon')
+            img = art.get(getattr(self.g.d, 'ICON', 'icon'))
             px = img.pixels()
             ph = tk.PhotoImage(width=img.w, height=img.h)
             rows = []

@@ -20,6 +20,7 @@ from . import rules
 from .rules import Character, ITEMS, SPELLS, roll, bonus
 from . import art
 from . import textures
+from . import home_dir
 from . import words
 from . import music
 from .words import w
@@ -78,6 +79,7 @@ class State:
         self.steps = 0
         self.won = False
         self.supplies = {}          # ammunition and the like, by kind
+        self.saved_at = 0
 
     def to_json(self):
         d = dict(self.__dict__)
@@ -332,7 +334,7 @@ class Game:
         self.view.sprite_source = art.sprite_source
         self.sound = sound
         self.save_path = save_path or os.path.join(
-            os.path.expanduser('~'), '.%s.json' % self.id)
+            home_dir(), '.%s.json' % self.id)
         self.rng = random.Random()
         self.modes = []
         self.log = []
@@ -344,6 +346,8 @@ class Game:
         self.view_flash = 0.0
         self.roster_override = None
         self.clock = 0.0
+        self.warm = None            # a generator preparing the view
+        self.warmed_for = None
         self.skies = {}
         self.speed = 1.0
         self.kits = dict(KITS)
@@ -463,24 +467,54 @@ class Game:
 
     # ------------------------------------------------------------ saving
 
-    def save(self, quiet=True):
+    SLOTS = 6
+
+    def save(self, quiet=True, path=None):
+        """Save to the autosave (or to path, a save slot)."""
         if not self.st:
-            return
+            return False
+        path = path or self.save_path
         try:
-            with open(self.save_path + '.tmp', 'w') as f:
+            import time
+            self.st.saved_at = time.time()
+            with open(path + '.tmp', 'w') as f:
                 json.dump(self.st.to_json(), f)
-            os.replace(self.save_path + '.tmp', self.save_path)
+            os.replace(path + '.tmp', path)
             if not quiet:
                 self.say('Game saved.', INK_DIM)
+            return True
         except OSError as e:
             self.say('Could not save: %s' % e, INK_HI)
+            return False
 
     def has_save(self):
         return os.path.exists(self.save_path)
 
-    def load(self):
+    def slot_path(self, n):
+        base = self.save_path[:-5] if self.save_path.endswith('.json') \
+            else self.save_path
+        return '%s-%d.json' % (base, n)
+
+    def slot_info(self, n):
+        """A line describing save slot n, or None if it is empty."""
+        import time
         try:
-            with open(self.save_path) as f:
+            with open(self.slot_path(n)) as f:
+                d = json.load(f)
+            where = self.levels[d['level']].name
+            lv = max(c['level'] for c in d['party'])
+            when = time.strftime('%d %b %H:%M',
+                                 time.localtime(d.get('saved_at', 0)))
+            return '%s, level %d, %s' % (where, lv, when)
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def any_slots(self):
+        return any(self.slot_info(n) for n in range(1, self.SLOTS + 1))
+
+    def load(self, path=None):
+        try:
+            with open(path or self.save_path) as f:
                 st = State.from_json(json.load(f))
         except (OSError, ValueError, KeyError, TypeError):
             return False
@@ -868,8 +902,66 @@ class Game:
         L = self.level
         return L.spec.get('music') or ('town' if L.outdoor else 'dungeon')
 
+    def warm_jobs(self):
+        """Everything the current level and light will want drawn."""
+        L = self.level
+        t = L.theme
+        walls = {t.get('wall'), t.get('door'), t.get('locked')}
+        walls |= {name for name, _ in t.get('variants', ())}
+        floors = {t.get('floor'), t.get('stairs')}
+        ceils = {t.get('ceil')}
+        sprites = set()
+        for sq in L.legend.values():
+            w_ = sq.get('wall')
+            walls |= set(w_) if isinstance(w_, (list, tuple)) else {w_}
+            if sq.get('floor') and sq['floor'] != '@stairs':
+                floors.add(sq['floor'])
+            if sq.get('ceil'):
+                ceils.add(sq['ceil'])
+            for key in ('sprite', 'sprite_after', 'sprite_open'):
+                if sq.get(key):
+                    sprites.add(sq[key])
+            if sq.get('chest') and not sq.get('sprite_open'):
+                sprites.add('chest_open')
+        known = set(textures.names())
+        walls = sorted(x for x in walls if x in known)
+        floors = sorted(x for x in floors if x in known)
+        ceils = [] if L.outdoor else sorted(x for x in ceils if x in known)
+        sprites = sorted(x for x in sprites if x in art.names())
+        fog = L.theme.get('fog', '#000000')
+        for _ in self.view.prepare(self.light_radius(), fog, walls, floors,
+                                   ceils, sprites):
+            yield
+        # the monsters met here
+        kinds = {k for _, groups in L.encounters for (k, lo, hi) in groups}
+        kinds |= {k for sq in L.legend.values()
+                  for (k, n) in sq.get('fight', [])}
+        for k in sorted(kinds):
+            if k in rules.MONSTERS:
+                art.get(rules.MONSTERS[k]['art'])
+                yield
+
+    def keep_warm(self, budget=0.02):
+        """Run the view's preparation for up to budget seconds."""
+        if not self.st:
+            return
+        want = (self.st.level, self.light_radius())
+        if want != self.warmed_for:
+            self.warmed_for = want
+            self.warm = self.warm_jobs()
+        if self.warm is None:
+            return
+        import time
+        end = time.perf_counter() + budget
+        try:
+            while time.perf_counter() < end:
+                next(self.warm)
+        except StopIteration:
+            self.warm = None
+
     def update(self, dt):
         self.clock += dt
+        self.keep_warm()
         if hasattr(self.sound, 'tick'):
             self.sound.music(self.music_for())
             self.sound.tick()

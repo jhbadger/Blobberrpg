@@ -12,8 +12,50 @@ import sys
 __version__ = '0.1'
 
 
+def home_dir():
+    """Where saves and the sound cache go: your home folder, or, if that
+    can't be written to (as in an Android app), the app's own folder."""
+    import tempfile
+    home = os.path.expanduser('~')
+    if home != '~' and os.access(home, os.W_OK):
+        return home
+    for d in (os.environ.get('ANDROID_PRIVATE'), os.getcwd(),
+              tempfile.gettempdir()):
+        if d and os.access(d, os.W_OK):
+            return d
+    return home
+
+
 def run(gdef, argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if '--build-app' in argv:
+        from .build import build_app
+        i = argv.index('--build-app')
+        dest = argv[i + 1] if i + 1 < len(argv) and \
+            not argv[i + 1].startswith('--') else \
+            os.path.dirname(os.path.realpath(gdef.__file__))
+        print(build_app(gdef, os.path.expanduser(dest)))
+        return
+    if '--build-android' in argv:
+        from .build import build_android
+        i = argv.index('--build-android')
+        if i + 1 >= len(argv):
+            sys.exit('--build-android needs a folder to write the project '
+                     'to')
+        dest = build_android(gdef, os.path.expanduser(argv[i + 1]))
+        print('%s: build the app with %s/build.sh (Docker), or buildozer '
+              'android debug' % (dest, dest))
+        return
+    if '--icon-png' in argv:
+        from .build import icon_png
+        i = argv.index('--icon-png')
+        size = int(argv[i + 1])
+        out = argv[i + 2] if i + 2 < len(argv) else '%s-%d.png' % (gdef.ID,
+                                                                   size)
+        with open(out, 'wb') as fh:
+            fh.write(icon_png(gdef, size))
+        print(out)
+        return
     if '--selftest' in argv:
         sys.exit(selftest(gdef))
     if '--balance' in argv:
@@ -34,7 +76,13 @@ def run(gdef, argv=None):
         return
     from .sound import Sound
     from .game import Game
-    from .tkshell import TkShell
+    try:
+        import tkinter                                  # noqa: F401
+        have_tk = True
+    except ImportError:
+        have_tk = False
+    use_kivy = '--kivy' in argv or os.environ.get('BLOBBER_UI') == 'kivy' \
+        or not have_tk
     scale = None
     if '--scale' in argv:
         scale = float(argv[argv.index('--scale') + 1])
@@ -48,7 +96,12 @@ def run(gdef, argv=None):
     if snd.on and snd.music_on:
         snd.prepare_music(g.tunes, first=('title', 'town'))
     try:
-        TkShell(g, scale).run()
+        if use_kivy:
+            from .kivyshell import KivyShell
+            KivyShell(g).run()
+        else:
+            from .tkshell import TkShell
+            TkShell(g, scale).run()
     finally:
         snd.music(None)
         snd.stop_music()

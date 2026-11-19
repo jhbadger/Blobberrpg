@@ -9,6 +9,7 @@ from . import font
 from . import art
 from .words import w
 from .rules import (ITEMS, SPELLS, SLOTS, STAT_NAMES, STATS, xp_for, bonus,
+                    add_bonus,
                     can_use, PACK)
 from .world import DIRS
 
@@ -78,6 +79,8 @@ class TitleMode(Mode):
         opts = []
         if g.has_save():
             opts.append((w('continue'), 'load'))
+        if g.any_slots():
+            opts.append(('Load a saved game', 'slots'))
         opts.append((w('new_game'), 'new'))
         opts.append((w('quit'), 'quit'))
         return opts
@@ -137,6 +140,8 @@ class TitleMode(Mode):
         elif v == 'load':
             if not g.load():
                 g.tell('That saved game could not be read.')
+        elif v == 'slots':
+            load_menu(g, lambda: None)
         elif v == 'new':
             def start():
                 g.new_game()
@@ -245,10 +250,49 @@ class ExploreMode(Mode):
                 g.push(SheetMode(i))
 
 
+def slot_menu(g, title, then, only_used=False, on_cancel=None):
+    opts = []
+    for n in range(1, g.SLOTS + 1):
+        info = g.slot_info(n)
+        opts.append((info or '(empty)', n,
+                     bool(info) or not only_used))
+    g.ask(title, opts, then, on_cancel=on_cancel or (lambda: None))
+
+
+def save_menu(g):
+    def chosen(n):
+        def do():
+            if g.save(path=g.slot_path(n)):
+                g.say('Saved in slot %d.' % n, INK_DIM)
+        if g.slot_info(n):
+            g.yesno('Save over slot %d?' % n, do)
+        else:
+            do()
+    slot_menu(g, 'Save in which slot?', chosen)
+
+
+def load_menu(g, on_cancel):
+    def chosen(n):
+        def do():
+            if not g.load(g.slot_path(n)):
+                g.tell('That saved game could not be read.')
+            else:
+                g.save()            # it becomes the game to continue
+        if g.st:
+            g.yesno('Load slot %d? Anything since your last save will be '
+                    'lost.' % n, do)
+        else:
+            do()
+    slot_menu(g, 'Load which game?', chosen, only_used=True,
+              on_cancel=on_cancel)
+
+
 def game_menu(g):
     def pick(v):
         if v == 'save':
-            g.save(quiet=False)
+            save_menu(g)
+        elif v == 'load':
+            load_menu(g, lambda: None)
         elif v == 'sound':
             g.sound.on = not g.sound.on
             g.say('Sound is %s.' % ('on' if g.sound.on else 'off'))
@@ -269,7 +313,8 @@ def game_menu(g):
             g.quit = True
     g.ask('The Game', [
         ('Back to the game', 'back'),
-        ('Save', 'save'),
+        ('Save in a slot', 'save'),
+        ('Load a saved game', 'load', g.any_slots()),
         ('Sound: %s' % ('on' if g.sound.on else 'off'), 'sound',
          g.sound.available),
         ('Music: %s' % ('on' if getattr(g.sound, 'music_on', False)
@@ -427,9 +472,8 @@ class SheetMode(Mode):
                 (w('Points'), '%d/%d' % (c.sp, c.maxsp)),
                 (w('armour_class'), str(c.ac())),
                 ('To hit', '%+d' % hit),
-                ('Damage', c.damage_dice() + ('%+d' % bonus(c.st)
-                                              if bonus(c.st) and not
-                                              weapon.get('range') else '')),
+                ('Damage', add_bonus(c.damage_dice(), 0 if weapon.get('range')
+                                     else bonus(c.st))),
                 ('Attacks', str(c.attacks())),
                 ('Condition', w(c.status))]
         if weapon.get('ammo'):

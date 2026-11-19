@@ -26,6 +26,17 @@ def roll(expr, rng=random):
     return sum(rng.randint(1, s) for _ in range(n)) + k
 
 
+def add_bonus(expr, b):
+    """'1d6+1' with a bonus of 3 -> '1d6+4'."""
+    m = _DICE.match(expr) if isinstance(expr, str) else None
+    if not m:
+        return str(roll(expr) + b) if not isinstance(expr, str) or \
+            expr.strip().lstrip('-').isdigit() else expr
+    k = int((m.group(3) or '0').replace(' ', '')) + b
+    return '%sd%s%s' % (m.group(1), m.group(2),
+                        ('%+d' % k) if k else '')
+
+
 def dice_max(expr):
     if isinstance(expr, int):
         return expr
