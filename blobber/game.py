@@ -39,6 +39,16 @@ ROSTER_BG = rgb('#17151d')
 ROSTER_TXT = rgb('#e8dcc0')
 ROSTER_HEAD = rgb('#d8b050')
 
+# How the screen round the view looks.  A game changes any of these with a
+# CHROME dict: background and frame name a texture to tile (None for the
+# stone of the default), ornament a picture over the top of the view, paper
+# and roller the colours of the scroll on the right.
+CHROME = dict(background=None, bg_colours=('#8a8884', '#56544f'),
+              bg_shade=0.9, frame=None, frame_colours=('#7a7670', '#2e2c28'),
+              frame_shade=1.0, bevel=('#c8c4bc', '#2a2824'), moss=True,
+              ornament='ornament', paper=('#e2c894', '#9a6a30'),
+              roller=('#6a3e14', '#e8b858'))
+
 KITS = {
     'Fighter': ['shortsword', 'leather', 'buckler'],
     'Paladin': ['mace', 'leather', 'buckler'],
@@ -288,6 +298,8 @@ class Game:
         self.kits = dict(KITS)
         self.kits.update(getattr(gdef, 'KITS', {}))
         self.hooks = getattr(gdef, 'HOOKS', {})
+        self.chrome = dict(CHROME)
+        self.chrome.update(getattr(gdef, 'CHROME', {}))
         words.setup(getattr(gdef, 'WORDS', {}))
         self.tunes = dict(music.TUNES)
         self.tunes.update(getattr(gdef, 'MUSIC', {}))
@@ -418,9 +430,12 @@ class Game:
     def load(self):
         try:
             with open(self.save_path) as f:
-                self.st = State.from_json(json.load(f))
+                st = State.from_json(json.load(f))
         except (OSError, ValueError, KeyError, TypeError):
             return False
+        if st.level not in self.levels:
+            return False
+        self.st = st
         self.log = []
         self.say('Welcome back to %s.' % self.level.name)
         from .modes import ExploreMode
@@ -559,21 +574,28 @@ class Game:
     # ------------------------------------------------------------- chrome
 
     def _build_base(self):
+        ch = self.chrome
         s = Surface(W, H)
-        s.put(0, 0, W, H, art.stone_panel(W, H, 3, '#8a8884', '#56544f'))
-        s.darken(0, 0, W, H, 0.9)
-        # the carved frame round the view
-        fr = Surface(344, 266)
-        fr.put(0, 0, 344, 266, art.stone_panel(344, 266, 8, '#7a7670',
-                                               '#2e2c28', [10, 12, 10]))
-        s.put(8, 8, 344, 266, bytes(fr.buf))
-        s.bevel(8, 8, 344, 266, rgb('#c8c4bc'), rgb('#2a2824'), 2)
-        s.bevel(VX - 2, VY - 2, VW + 4, VH + 4, rgb('#2a2824'),
-                rgb('#c8c4bc'), 2)
-        s.bevel(NX - 2, NY - 2, NW + 4, NH + 4, rgb('#2a2824'),
-                rgb('#c8c4bc'), 1)
+        if ch['background']:
+            s.put(0, 0, W, H, art.texture_panel(W, H, ch['background'],
+                                                ch['bg_shade']))
+        else:
+            s.put(0, 0, W, H, art.stone_panel(W, H, 3, *ch['bg_colours']))
+            s.darken(0, 0, W, H, ch['bg_shade'])
+        # the frame round the view
+        if ch['frame']:
+            s.put(8, 8, 344, 266, art.texture_panel(344, 266, ch['frame'],
+                                                    ch['frame_shade']))
+        else:
+            s.put(8, 8, 344, 266, art.stone_panel(344, 266, 8,
+                                                  *ch['frame_colours'],
+                                                  [10, 12, 10]))
+        hi, lo = rgb(ch['bevel'][0]), rgb(ch['bevel'][1])
+        s.bevel(8, 8, 344, 266, hi, lo, 2)
+        s.bevel(VX - 2, VY - 2, VW + 4, VH + 4, lo, hi, 2)
+        s.bevel(NX - 2, NY - 2, NW + 4, NH + 4, lo, hi, 1)
         rng = random.Random(4)
-        for _ in range(90):
+        for _ in range(90 if ch['moss'] else 0):
             # moss clumps on the frame
             side = rng.randrange(4)
             if side == 0:
@@ -596,10 +618,11 @@ class Game:
                                          NY <= yy < NY + NH):
                             s.pixel(xx, yy, c)
         # the parchment
-        par = art.parchment(PW - 12, PH - 24)
+        par = art.parchment(PW - 12, PH - 24, 5, *ch['paper'])
         from .gfx import Image
         s.blit(Image.from_pixels(PW - 12, PH - 24, par), PX + 6, PY + 12)
-        roll = Image.from_pixels(PW, 14, art.scroll_roll(PW, 14))
+        roll = Image.from_pixels(PW, 14, art.scroll_roll(PW, 14,
+                                                         *ch['roller']))
         s.blit(roll, PX, PY)
         s.blit(roll, PX, PY + PH - 14)
         # the roster panel
@@ -696,7 +719,10 @@ class Game:
                 col = rgb('#ff8060')
             s.text(cols[0][0], y, str(i + 1), ROSTER_HEAD)
             s.text(cols[1][0], y, c.name, col)
-            s.text(cols[2][0], y, '%s %s' % (c.race, c.cls), col)
+            who = '%s %s' % (c.race, c.cls)
+            if font.width(who) > cols[3][0] - cols[2][0] - 4:
+                who = c.cls
+            s.text(cols[2][0], y, who, col)
             s.text(cols[3][0] + 10, y, str(c.level), col, align='right')
             ac = c.ac()
             s.text(cols[4][0] + 12, y, str(ac) if ac > -10 else 'LO', col,
@@ -717,10 +743,9 @@ class Game:
                 s.rect(cols[6][0] + 34, y + 3, bw, 4, rgb('#101a3a'))
                 s.rect(cols[6][0] + 34, y + 3, int(bw * frac), 4,
                        rgb('#5080ff'))
-            st = {'ok': 'OK', 'poisoned': 'Poisoned', 'paralyzed': 'Paralyzed',
-                  'asleep': 'Asleep', 'dead': 'Dead', 'stoned': 'Stone'}[status]
+            st = w(status)
             if status == 'ok' and c.can_level():
-                st = 'Can train'
+                st = w('trainable')
             s.text(cols[7][0], y, st, col)
             y += 15
 
@@ -753,8 +778,8 @@ class Game:
         if self.view_flash > 0:
             s.translate(VX, VY, VW, VH, bytes(min(255, i + 90)
                                                 for i in range(256)))
-        if not getattr(m, 'full', False):
-            orn = art.get('ornament')
+        if not getattr(m, 'full', False) and self.chrome['ornament']:
+            orn = art.get(self.chrome['ornament'])
             s.blit(orn, VX + VW // 2 - orn.w // 2, 0)
         if not getattr(m, 'full', False):
             self.draw_nameplate(s, getattr(m, 'place', None))
@@ -921,7 +946,9 @@ class Game:
     def ask_goto(self, sq):
         lid, x, y, f = sq['goto']
         word = sq.get('stairs')
-        if word == 'down':
+        if sq.get('ask'):
+            q = sq['ask']
+        elif word == 'down':
             q = 'There are stairs going down here. Take them?'
         elif word == 'up':
             q = 'There are stairs going up here. Take them?'
@@ -965,7 +992,7 @@ class Game:
                     if c.hp <= 0:
                         c.hp = 0
                         c.status = 'dead'
-                        self.say('%s succumbs to poison!' % c.name, INK_HI)
+                        self.say(w('poison_kills', c.name), INK_HI)
                         self.sound.play('die')
             if self.check_wipe():
                 return
@@ -1145,7 +1172,7 @@ class Game:
         ch = sq['chest']
         key = self.sqkey(what=':chest')
         trapped = ch.get('trap') and not self.flag(key + 'safe')
-        rogues = [c for c in self.able() if c.cls == 'Rogue']
+        rogues = [c for c in self.able() if rules.skilled(c, 'traps')]
 
         def open_it():
             if trapped:
@@ -1218,7 +1245,7 @@ class Game:
                 if c.alive and self.rng.randint(1, 20) > c.lk:
                     c.status = 'poisoned'
                     self.hurt_flash(i)
-                    self.say('%s is poisoned.' % c.name, INK_HI)
+                    self.say(w('is_poisoned', c.name), INK_HI)
         else:
             self.say('The chest explodes!', INK_HI)
             for i, c in enumerate(self.party):
@@ -1275,7 +1302,7 @@ class Game:
             self.tell(sq.get('locked_msg', 'The door is locked. It needs '
                                            'a %s.' % self.item_name(key)))
             return
-        rogues = [c for c in self.able() if c.cls == 'Rogue']
+        rogues = [c for c in self.able() if rules.skilled(c, 'locks')]
         strong = max(self.able(), key=lambda c: c.st, default=None)
         opts = []
         if rogues:
@@ -1333,7 +1360,7 @@ class Game:
     def search(self):
         """Look for hidden doors around the party."""
         L = self.level
-        best = max((c.lk + (c.level * 2 if c.cls == 'Rogue' else 0)
+        best = max((c.lk + (c.level * 2 if rules.skilled(c, 'search') else 0)
                     for c in self.able()), default=0)
         found = False
         for rel in (0, 1, 3):
@@ -1421,7 +1448,7 @@ class Game:
             t = self.party[target]
             if t.status in ('poisoned', 'paralyzed', 'asleep'):
                 t.status = 'ok'
-                self.say('%s is cured.' % t.name)
+                self.say(w('is_cured', t.name))
             else:
                 self.say('%s needed no cure.' % t.name)
         elif e == 'raise':

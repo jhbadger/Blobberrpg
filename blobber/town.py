@@ -36,14 +36,12 @@ def guild(g, sq, sel=0):
     view = view_for(sq, 'guildmaster', 'cata')
     name = sq.get('name', w('Guild'))
     trainable = [c for c in g.party if c.alive and c.can_level()]
-    opts = [('Train for new levels', 'train', bool(trainable)),
-            ('Add a member to the party', 'add',
-             bool(g.st.roster) and len(g.party) < 6),
-            ('Leave a member at %s' % w('guild'), 'remove',
-             len(g.party) > 1),
-            ('Create a new adventurer', 'create'),
-            ('Change the marching order', 'order', len(g.party) > 1),
-            ('Retire an adventurer', 'retire', bool(g.st.roster)),
+    opts = [(w('g_train'), 'train', bool(trainable)),
+            (w('g_add'), 'add', bool(g.st.roster) and len(g.party) < 6),
+            (w('g_remove', w('guild')), 'remove', len(g.party) > 1),
+            (w('g_create'), 'create'),
+            (w('g_order'), 'order', len(g.party) > 1),
+            (w('g_retire'), 'retire', bool(g.st.roster)),
             ('Leave', 'leave')]
     text = sq.get('greeting', 'The Guildmaster looks up from his ledgers. '
                               '"Well met. What do you need?"')
@@ -65,7 +63,7 @@ def guild(g, sq, sel=0):
             for l in lines:
                 g.say(l)
             g.save()
-            g.tell('\n\n'.join(lines), back, title='Training', view=view,
+            g.tell('\n\n'.join(lines), back, title=w('training'), view=view,
                    place=name)
         elif v == 'add':
             g.ask('Who joins?', [('%s, level %d %s' % (c.name, c.level, c.cls),
@@ -318,7 +316,7 @@ def temple(g, sq):
             c.status = 'ok'
             c.hp = max(1, c.hp)
             g.sound.play('heal')
-            g.say('%s is cured.' % c.name)
+            g.say(w('is_cured', c.name))
             back()
         elif v[0] == 'raise':
             c = v[1]

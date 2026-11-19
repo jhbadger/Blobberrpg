@@ -208,10 +208,15 @@ def shop(g):
         _, c, iid, slot = best
         st.gold -= ITEMS[iid]['price']
         c.equip[slot] = iid
-    for kind in {(c.item('weapon') or {}).get('ammo') for c in g.party} - {None}:
+    users = {}
+    for c in g.party:
+        kind = (c.item('weapon') or {}).get('ammo')
+        if kind:
+            users[kind] = users.get(kind, 0) + 1
+    for kind, n in users.items():
         packs = [i for i in stock(g) if ITEMS[i].get('ammo') == kind and
                  ITEMS[i]['kind'] == 'ammo']
-        while packs and st.supplies.get(kind, 0) < 60 and \
+        while packs and st.supplies.get(kind, 0) < 60 * n and \
                 st.gold >= ITEMS[packs[0]]['price'] + 20:
             st.gold -= ITEMS[packs[0]]['price']
             st.supplies[kind] = st.supplies.get(kind, 0) + \
@@ -292,7 +297,9 @@ def campaign(gdef, seed, max_fights=1500, target=None):
             sp = sum(c.sp for c in casters) / max(1, sum(c.maxsp
                                                           for c in casters))
             dead = any(not c.alive for c in g.party)
-            if hp < 0.5 or (casters and sp < 0.25) or dead or \
+            dry = any(g.st.supplies.get((c.item('weapon') or {}).get('ammo'),
+                                        99) < 10 for c in g.party)
+            if hp < 0.5 or (casters and sp < 0.25) or dead or dry or \
                     any(c.can_level() for c in g.party):
                 break
         in_town(g, ledger)

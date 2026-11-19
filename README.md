@@ -7,10 +7,15 @@ beside it and the party's roster below. It's written in Python and Tk
 with nothing to install. Everything is drawn in code, sound and music
 included, so there are no image or sound files.
 
-The sample game is **The Ashen Crypt**.
+There are two games so far, a sword-and-sorcery dungeon crawl and a
+far-future boarding action:
 
 ```bash
 ./ashencrypt
+```
+
+```bash
+./benediction
 ```
 
 If Python reports `No module named '_tkinter'`, install your Python's Tk
@@ -44,6 +49,40 @@ unmade.
   a place where magic dies, fountains, chests (some trapped), guardians
   and a final battle.
 
+## Benediction
+
+The forty-first millennium of the Imperium of Terra. The cathedral-ship
+Benediction, lost for nine hundred years with the body and relics of Saint
+Orsolya of the Burning Hand, has drifted back out of the void, and
+something has made a nest in it. A squad of the Order of the Iron Vigil,
+loyal servants of the Holy Emperor, docks the strike ship Unbending Vow
+against the wreck. Their orders are to cleanse it of the alien Brood and
+bring home the Saint's three relics: her Burning Hand, her Litany and her
+Heart.
+
+- **The Unbending Vow** is the squad's home between sorties:
+  - Command, where the Castellan grants promotions and inducts recruits;
+  - the Armoury, for rifles, scatterguns, heavy repeaters, flamers, shock
+    mauls, plate, ammunition, medi-packs, grenades and melta charges;
+  - the Infirmary, which treats, purifies and revives;
+  - the Barracks, to rest, rearm and save;
+  - the Archive, for hints.
+- **The squad**: Dask (Assault), Sergeant Varro, Holm (Gunner, with a
+  heavy repeater), Ferro (Techwright, who bypasses locks and finds hidden
+  hatches), Ansel (Confessor: healing rites, the Rite of Abjuration that
+  frees the hollowed, and the Emperor's Wrath against the alien) and Mira
+  Vey (Psion: psy-lances, mind storms, barriers and far sight). Rifles and
+  pistols fire from any rank, using up the squad's ammunition. The flamer
+  burns a whole group at once.
+- **The wreck** has three decks: the rusting cargo holds, the gilded
+  nave, and the hive the Brood has grown in the ship's heart. Waiting on
+  them are hollowed crew, choir gunners, rogue sentinels, stalkers,
+  spitters, brood guards, ravagers, whisperers, an Iron Warden still
+  guarding the Saint's reliquary, and the Brood Matriarch.
+
+It's entirely the engine with the game's own words, rules, art and music.
+The engine itself wasn't forked to make it.
+
 ### Keys
 
 | Key | |
@@ -68,8 +107,9 @@ at a time. Only the first three in the marching order can fight hand to
 hand; anyone with a bow or crossbow can shoot from any rank, using up the
 party's arrows (the Armoury sells more).
 
-The game saves to `~/.ashencrypt.json` whenever you change level, rest at
-the inn, or quit.
+Each game saves to `~/.<game>.json` (`~/.ashencrypt.json`,
+`~/.benediction.json`) whenever you change level, rest at the inn or
+barracks, or quit.
 
 ## The engine
 
@@ -108,7 +148,9 @@ wall is a few cached byte copies, so a step takes about a millisecond.
 ### Making a game
 
 A game is a script that defines a handful of names and calls
-`blobber.run()`. See `ashencrypt` for a complete one.
+`blobber.run()`. See `ashencrypt` for a complete one. `benediction` shows a
+game that replaces the whole fantasy ruleset, and keeps its art in a
+module beside it (`benediction_art.py`).
 
 - `ID`, `TITLE`, `SUBTITLE`, `TITLE_ART`, `INTRO` (pages), `WELCOME`,
   `DEATH`
@@ -123,6 +165,10 @@ A game is a script that defines a handful of names and calls
 - `SUPPLIES`: the ammunition the party starts with, such as
   `{'arrows': 40}`
 - `WORDS`: the engine's on-screen words this game changes (see below)
+- `CHROME`: how the screen round the view looks: textures to tile for the
+  background and the frame, the ornament over the view, the scroll's
+  colours, and whether moss grows on the frame
+- `KITS`: what each class starts with
 - `MUSIC`: tunes to add or replace; a level picks one with `music=`
 - changes to the rules tables: `rules.ITEMS.update(...)`,
   `rules.MONSTERS.update(...)`, `rules.XP_TABLE`, `rules.LOOT` and so on
@@ -130,9 +176,12 @@ A game is a script that defines a handful of names and calls
 The rules tables are a stock fantasy set. Every entry can be replaced, and
 a few fields make them fit other settings:
 
+- classes: `skills`, any of `'locks'`, `'traps'` and `'search'` (the
+  Rogue's in the stock set, the Techwright's in Benediction)
 - items: `verb` ("drinks", "slashes", "fires"), `range` in feet for a
-  weapon that works from any rank, and `ammo` naming the supply each shot
-  uses. An item of kind `'ammo'` adds `amount` to that supply when bought.
+  weapon that works from any rank, `ammo` naming the supply each shot
+  uses, and `area` for a weapon that hits a whole group. An item of kind
+  `'ammo'` adds `amount` to that supply when bought.
 - monsters: `tags` that spells single out (Turn Undead looks for
   `'undead'`; a game could tag `'robot'`), `range` with `shoots` ("hurls
   fire at"), `unique` ("the Ashen King", immune to sleep and turning),
@@ -145,8 +194,9 @@ a few fields make them fit other settings:
 ### Words
 
 Everything the engine itself says, from "gold" and "spell points" to "Cast
-a spell", "Raise" and "the Guild", is in `blobber/words.py`. A game with
-another setting names only the ones it changes:
+a spell", "Raise", "the Guild", the conditions ("Poisoned") and the title
+menu, is in `blobber/words.py`. A game with another setting names only the
+ones it changes:
 
 ```python
 WORDS = {'money': 'credits', 'points': 'psi points', 'Points': 'Psi points',

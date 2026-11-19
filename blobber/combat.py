@@ -337,6 +337,9 @@ class CombatMode(Mode):
                 return
             gi = self.groups.index(grp)
             verb = weapon.get('verb', 'hits')
+            if weapon.get('area'):
+                self.area_attack(g, c, weapon, grp, gi, beats)
+                return
             for n in range(c.attacks()):
                 targets = grp.alive
                 if not targets:
@@ -406,6 +409,31 @@ class CombatMode(Mode):
                     c.name, it.get('verb', 'uses'), it['name']),
                               ('sound', 'spell')))
                 self.apply_spell(g, c, sp, o[2], beats, 5)
+
+    def area_attack(self, g, c, weapon, grp, gi, beats):
+        """A weapon with 'area' (a flamer, a blast) hits every foe in the
+        group with one shot."""
+        rng = g.rng
+        if weapon.get('ammo'):
+            if not self.has_ammo(g, weapon):
+                beats.append((w('no_ammo', c.name, weapon['ammo']), None))
+                return
+            g.st.supplies[weapon['ammo']] -= 1
+        beats.append(('%s %s the %s!' % (c.name, weapon.get('verb', 'hits'),
+                                          grp.m['plural']), ('sound', 'trap')))
+        for f in list(grp.alive):
+            r = rng.randint(1, 20)
+            th = c.to_hit() + self.bless + bonus(c.dx) - bonus(c.st)
+            if r == 20 or (r != 1 and r + th + grp.m['ac'] >= 20):
+                dmg = max(1, roll(c.damage_dice(), rng))
+                f.hp -= dmg
+                f.asleep = 0
+                beats.append(('%s takes %d damage.' % (cap(called(grp.m)), dmg),
+                              ('foe', gi)))
+                if f.hp <= 0:
+                    self.kill(grp, gi, f, beats)
+            else:
+                beats.append(('%s is missed.' % cap(called(grp.m)), ('miss',)))
 
     def kill(self, grp, gi, f, beats):
         self.kills.append(grp.kind)
@@ -492,7 +520,7 @@ class CombatMode(Mode):
             t = g.party[tgt]
             if t.status in ('poisoned', 'paralyzed', 'asleep'):
                 t.status = 'ok'
-            beats.append(('%s is cured.' % t.name, self.snap(g, tgt)))
+            beats.append((w('is_cured', t.name), self.snap(g, tgt)))
         elif e == 'ward':
             self.ward = max(self.ward, sp.get('amount', 2))
             beats.append(('A shimmering ward surrounds the party.', None))
@@ -575,13 +603,13 @@ class CombatMode(Mode):
                             rng.randint(1, 100) <= int(parts[1]):
                         if parts[0] == 'poison' and c.status == 'ok':
                             c.status = 'poisoned'
-                            beats.append(('%s is poisoned!' % c.name,
+                            beats.append((w('is_poisoned', c.name),
                                           self.snap(g, i)))
                         elif parts[0] == 'paralyze' and c.status in (
                                 'ok', 'poisoned'):
                             if rng.randint(1, 20) > c.lk:
                                 c.status = 'paralyzed'
-                                beats.append(('%s is paralyzed!' % c.name,
+                                beats.append((w('is_paralyzed', c.name),
                                               self.snap(g, i)))
                         elif parts[0] == 'drain' and c.level > 1:
                             c.level -= 1
@@ -591,8 +619,8 @@ class CombatMode(Mode):
                             c.xp = xp_for(c.level)
                             c.maxsp = c.sp_for_level(c.level)
                             c.sp = min(c.sp, c.maxsp)
-                            beats.append(('%s feels a level of life drain '
-                                          'away!' % c.name, self.snap(g, i)))
+                            beats.append((w('drained', c.name),
+                                          self.snap(g, i)))
             else:
                 verb = m.get('shoots', w('shoots')) if shooting else 'attacks'
                 beats.append(('%s %s %s but misses.' % (

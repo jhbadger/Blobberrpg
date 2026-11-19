@@ -9,6 +9,11 @@ Entries with %s or %d are filled in by the engine, in the order shown.
 """
 
 DEFAULTS = {
+    # the title screen
+    'continue':     'Continue the adventure',
+    'new_game':     'Begin a new adventure',
+    'quit':         'Quit',
+    'credit':       'A blobber made with the Blobber engine',
     # money
     'money':        'gold',             # "120 gold"
     'found_money':  'You find %d gold pieces.',
@@ -49,11 +54,31 @@ DEFAULTS = {
     'shot_miss':    '%s fires at %s and misses.',
     'no_ammo':      '%s is out of %s!',
     'can_train':    '%s can train for a new level at the Guild.',
+    'trainable':    'Can train',        # roster status
+    # conditions, as the roster and character sheet show them
+    'ok':           'OK',
+    'poisoned':     'Poisoned',
+    'paralyzed':    'Paralyzed',
+    'asleep':       'Asleep',
+    'dead':         'Dead',
+    'stoned':       'Stone',
+    'is_poisoned':  '%s is poisoned!',
+    'is_paralyzed': '%s is paralyzed!',
+    'poison_kills': '%s succumbs to poison!',
+    'drained':      '%s feels a level of life drain away!',
+    'is_cured':     '%s is cured.',
     # light
     'light_out':    'Your light flickers and goes out.',
     'too_bright':   "It's bright enough out here.",
     # town
     'guild':        'the Guild',
+    'g_train':      'Train for new levels',
+    'g_add':        'Add a member to the party',
+    'g_remove':     'Leave a member at %s',
+    'g_create':     'Create a new adventurer',
+    'g_order':      'Change the marching order',
+    'g_retire':     'Retire an adventurer',
+    'training':     'Training',
     'Guild':        "Adventurers' Guild",
     'shop':         'The Armoury',
     'temple':       'The Temple',
@@ -81,4 +106,10 @@ def setup(game_words):
 
 def w(key, *args):
     s = WORDS.get(key, key)
-    return s % args if args else s
+    if not args:
+        return s
+    try:
+        return s % args
+    except (TypeError, ValueError):
+        # a game's word that leaves out a %s the engine fills in
+        return s

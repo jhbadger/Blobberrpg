@@ -1,0 +1,936 @@
+#!/usr/bin/env python3
+"""Benediction: a second game for the Blobber engine.
+
+The far future.  For nine hundred years the cathedral-ship Benediction was
+lost in the deep void with the body and relics of Saint Orsolya of the
+Burning Hand aboard.  Now it has drifted back into the light of the
+Imperium of Terra, and something has made a nest in it.  A squad of the
+Order of the Iron Vigil, loyal servants of the Holy Emperor, docks the
+strike ship Unbending Vow against the wreck: cleanse it of the alien
+Brood, and bring the Saint's relics home.
+
+Run it with ./benediction (Python 3 with Tk, nothing else).  The game is
+saved to ~/.benediction.json.  ./benediction --selftest checks the maps,
+and --balance plays its fights with a simulated player.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+import blobber                                         # noqa: E402
+from blobber import rules                              # noqa: E402
+import benediction_art                                 # noqa: E402,F401
+
+ID = 'benediction'
+TITLE = 'Benediction'
+SUBTITLE = 'Cleanse the wreck. Recover the relics. Faith is your armour.'
+TITLE_ART = 'title'
+
+INTRO = [
+    "The forty-first millennium of the Imperium of Terra. Nine hundred years "
+    "ago the cathedral-ship Benediction vanished in the deep void, carrying "
+    "the body of Saint Orsolya of the Burning Hand and the relics of her "
+    "crusade.",
+
+    "Last month a pilgrim fleet sighted it drifting at the edge of the "
+    "Kessa system, scorched and silent. Its distress beacon still sings "
+    "the Saint's vow. The pilgrims who went aboard did not come back, and "
+    "their last broadcast was only screaming, and something clicking.",
+
+    "Your squad of the Order of the Iron Vigil has docked the strike ship "
+    "Unbending Vow against the wreck. Your orders, sealed by the Castellan "
+    "in the Holy Emperor's name: cleanse the Benediction of whatever "
+    "infests it, and recover the Saint's three relics, her Burning Hand, "
+    "her Litany and her Heart.\n\nThe airlock is at the end of the "
+    "corridor. Command, the Armoury and the Archive are to the north, the "
+    "Infirmary and the Barracks to the south.",
+]
+WELCOME = "The Unbending Vow hums around you. Beyond the airlock, the " \
+          "Benediction waits."
+DEATH = "The squad has fallen in the dark of the Benediction. The Order " \
+        "will remember their names, and send others."
+
+GOLD = 200
+SUPPLIES = {'rounds': 120}
+START = ('ship', 8, 3, 1)
+
+CHROME = dict(background='hull_plate', bg_shade=0.75, frame='hull_frame',
+              bevel=('#9aa0aa', '#101216'), moss=False,
+              ornament='vigil_ornament', paper=('#d8d4c4', '#6a6658'),
+              roller=('#3a3e46', '#b0b4bc'))
+
+WORDS = {
+    'continue': 'Continue the mission',
+    'new_game': 'Begin a new mission',
+    'money': 'requisition',
+    'found_money': 'You salvage materiel worth %d requisition.',
+    'chest_money': 'Inside is materiel worth %d requisition.',
+    'magic': 'power', 'Magic': 'Powers',
+    'points': 'power points', 'Points': 'Power', 'pts': 'Power', 'sp': 'PP',
+    'cast': 'Use a power', 'casts': 'invokes',
+    'who_casts': 'Who invokes a power?',
+    'none_cast': 'No one can use a power now.',
+    'too_few': '%s has too little power left.',
+    'fizzle': "The power gutters out. Something here smothers the mind's "
+              "fire.",
+    'fizzle_fight': 'The power fails.',
+    'help_cast': 'use a power',
+    'race': 'Origin', 'race_pick': 'Choose an origin',
+    'class': 'Role', 'class_pick': 'Choose a role',
+    'armour_class': 'Armour',
+    'new_hero': 'A new recruit',
+    'name_hero': 'Name this new brother or sister of the Vigil:',
+    'turned': '%d %s fall, freed by holy fire!',
+    'turn_fail': 'The %s resist the rite.',
+    'turn_wrong': 'The %s are not hollowed.',
+    'breath': 'spews acid!',
+    'shoots': 'fires at',
+    'melee_miss': '%s strikes at %s and misses.',
+    'shot_miss': '%s fires at %s and misses.',
+    'can_train': '%s has earned a promotion: see the Castellan.',
+    'trainable': 'Promotion',
+    'poisoned': 'Infected', 'paralyzed': 'Stunned', 'asleep': 'Dazed',
+    'dead': 'Fallen', 'stoned': 'Petrified',
+    'is_poisoned': '%s is infected!',
+    'is_paralyzed': '%s is stunned!',
+    'poison_kills': '%s succumbs to the infection!',
+    'drained': '%s is drained by the alien mind!',
+    'is_cured': '%s is purified.',
+    'light_out': 'Your flare sputters out.',
+    'too_bright': "There's light enough aboard the Vow.",
+    'guild': 'Command', 'Guild': 'Command Deck',
+    'g_train': 'Receive promotions',
+    'g_add': 'Call up a brother from reserve',
+    'g_remove': 'Send a brother to the reserve',
+    'g_create': 'Induct a new recruit',
+    'g_order': 'Change the order of march',
+    'g_retire': 'Release a brother from service',
+    'training': 'Promotions',
+    'shop': 'The Armoury', 'temple': 'The Infirmary',
+    'inn': 'The Barracks', 'sage': 'The Archive',
+    'heal_wounds': 'Treat wounds', 'raise': 'Revive',
+    'healed': 'Sister Orla and her orderlies tend your wounds.',
+    'rest': 'Rest and rearm',
+    'rested': 'You sleep in the barracks. Wounds and power are restored, '
+              'and the game is saved.',
+    'morning': 'The ship\'s bell rings for the morning watch.',
+    'counsel': 'Consult the records',
+    'lore': 'Ask about the Benediction',
+}
+
+# ------------------------------------------------------------- the rules
+
+rules.RACES.clear()
+rules.RACES.update({
+    'Hive-born':  dict(st=0, iq=0, dx=1, cn=-1, lk=1,
+                       text='Raised in the crush of a hive city: quick and '
+                            'lucky.'),
+    'Forge-born': dict(st=0, iq=2, dx=0, cn=0, lk=-1,
+                       text='From the forge worlds: clever with machines.'),
+    'Feral-born': dict(st=2, iq=-2, dx=0, cn=2, lk=0,
+                       text='From a savage world: strong and hard to kill.'),
+    'Void-born':  dict(st=-1, iq=1, dx=1, cn=-1, lk=1,
+                       text='Born between the stars: strange, and often '
+                            'gifted with psychic power.'),
+})
+
+rules.CLASSES.clear()
+rules.CLASSES.update({
+    'Sergeant':   dict(abbr='SG', hd=10, atk=1.0, magic=None, every=5,
+                       gear={'all'},
+                       text='Leads from the front. Uses any weapon and '
+                            'armour, and gains an extra attack every five '
+                            'ranks.'),
+    'Assault':    dict(abbr='AS', hd=10, atk=1.0, magic=None, every=4,
+                       gear={'melee', 'plate'},
+                       text='A close-quarters killer with maul and axe. '
+                            'Gains an extra attack every four ranks.'),
+    'Gunner':     dict(abbr='GN', hd=10, atk=0.9, magic=None, every=0,
+                       gear={'rifle', 'heavy', 'plate'},
+                       text='Carries the heavy repeater or the flamer, and '
+                            'shoots from any rank.'),
+    'Techwright': dict(abbr='TW', hd=7, atk=0.75, magic=None, every=0,
+                       gear={'rifle', 'tech', 'melee'},
+                       skills={'locks', 'traps', 'search'},
+                       text='Bypasses locks, disarms traps on supply caches '
+                            'and finds hidden hatches.'),
+    'Confessor':  dict(abbr='CF', hd=8, atk=0.7, magic='rite', every=0,
+                       gear={'melee', 'plate'},
+                       text='A warrior-priest: heals with the Rites, frees '
+                            'the hollowed, and calls down the Emperor\'s '
+                            'wrath on the alien.'),
+    'Psion':      dict(abbr='PS', hd=5, atk=0.5, magic='psi', every=0,
+                       gear=set(),
+                       text='A sanctioned psychic: lances of mind-fire, '
+                            'barriers, far sight and the phase step.'),
+})
+
+rules.XP_TABLE[:] = [0, 0, 40, 100, 200, 350, 550, 800, 1150, 1600, 2200,
+                     3000, 4000, 5200]
+
+rules.ITEMS.clear()
+rules.ITEMS.update({
+    # weapons
+    'knife':      dict(name='Combat Knife', kind='weapon', dmg='1d4',
+                       price=6, verb='stabs'),
+    'sidearm':    dict(name='Sidearm', kind='weapon', dmg='1d6', range=30,
+                       ammo='rounds', price=20, verb='shoots'),
+    'rifle':      dict(name='Service Rifle', kind='weapon', dmg='1d8+1',
+                       hit=1, range=50, ammo='rounds', gear='rifle',
+                       price=45, verb='shoots'),
+    'scattergun': dict(name='Scattergun', kind='weapon', dmg='2d6+1',
+                       range=20, ammo='shells', gear='rifle', price=55,
+                       verb='blasts'),
+    'repeater':   dict(name='Heavy Repeater', kind='weapon', dmg='2d6+2',
+                       hit=1, range=60, ammo='rounds', gear='heavy',
+                       price=120, verb='rakes'),
+    'flamer':     dict(name='Purging Flamer', kind='weapon', dmg='2d6',
+                       range=20, area=True, ammo='fuel', gear='heavy',
+                       price=150, verb='sprays fire over',
+                       text='Purging Flamer: 2d6 to every foe in a group, '
+                            "range 20'."),
+    'maul':       dict(name='Shock Maul', kind='weapon', dmg='1d8+1',
+                       gear='melee', price=35, verb='smashes'),
+    'axe':        dict(name='Breaching Axe', kind='weapon', dmg='1d10+1',
+                       gear='melee', price=65, verb='cleaves'),
+    'thermal':    dict(name='Thermal Blade', kind='weapon', dmg='2d6+2',
+                       hit=1, gear='melee', price=240, verb='sears'),
+    'arcwelder':  dict(name='Arc Welder', kind='weapon', dmg='1d8+2', hit=1,
+                       gear='tech', price=70, verb='burns'),
+    'burninghand': dict(name='The Burning Hand', kind='weapon', dmg='3d6+2',
+                        hit=3, gear='melee', price=0, verb='smites',
+                        text='The Burning Hand: 3d6+2, +3 to hit. Saint '
+                             "Orsolya's gauntlet, still warm."),
+    # armour
+    'harness':    dict(name='Scout Harness', kind='armor', ac=2, price=20),
+    'voidplate':  dict(name='Void Plate', kind='armor', ac=4, price=90),
+    'siegeplate': dict(name='Siege Plate', kind='armor', ac=6, gear='plate',
+                       price=320),
+    'templar':    dict(name='Templar Plate', kind='armor', ac=7, price=800,
+                       text='Templar Plate: armour +7. Anyone may wear it.'),
+    'boardshield': dict(name='Boarding Shield', kind='shield', ac=2,
+                        gear='plate', price=60),
+    'helm':       dict(name='Sealed Helm', kind='helm', ac=1, price=15),
+    'warhelm':    dict(name='War Helm', kind='helm', ac=2, gear='plate',
+                       price=70),
+    'servos':     dict(name='Servo Gauntlets', kind='gloves', ac=1,
+                       price=40),
+    'medal':      dict(name="Saint's Medal", kind='ring', ac=1, price=120),
+    'wardicon':   dict(name='Ward Icon', kind='ring', ac=2, price=500),
+    # supplies
+    'medipack':   dict(name='Medi-pack', kind='potion', use='heal',
+                       amount='3d8+2', price=35, verb='applies'),
+    'purgative':  dict(name='Purgative', kind='potion', use='cure', price=20,
+                       verb='injects'),
+    'flare':      dict(name='Flare', kind='torch', use='light', light=3.5,
+                       turns=160, price=4, verb='lights'),
+    'frag':       dict(name='Frag Grenade', kind='scroll', use='spell',
+                       spell='FRAG', price=40, verb='throws'),
+    'melta':      dict(name='Melta Charge', kind='scroll', use='spell',
+                       spell='MELT', price=80, verb='sets off'),
+    'beacon':     dict(name='Recall Beacon', kind='scroll', use='spell',
+                       spell='RECL', price=120, verb='activates'),
+    'rounds':     dict(name='Rounds (40)', kind='ammo', ammo='rounds',
+                       amount=40, price=10),
+    'shells':     dict(name='Shells (20)', kind='ammo', ammo='shells',
+                       amount=20, price=10),
+    'fuel':       dict(name='Fuel (8)', kind='ammo', ammo='fuel', amount=8,
+                       price=20),
+    # the mission
+    'redcard':    dict(name='Red Keycard', kind='key', price=0,
+                       text='A red keycard stamped with the Benediction\'s '
+                            'seal.'),
+    'litany':     dict(name='Litany of Orsolya', kind='quest', price=0,
+                       text='The Saint\'s own prayer book, bound in brass.'),
+    'heart':      dict(name='Heart of Orsolya', kind='quest', price=0,
+                       text='A reliquary of gold. Something inside it '
+                            'beats, slowly.'),
+})
+rules.LOOT[:] = ['medipack', 'medipack', 'purgative', 'flare', 'frag']
+
+rules.SPELLS.clear()
+rules.SPELLS.update({
+    # the Psion's powers
+    'LNCE': dict(name='Psy-Lance', school='psi', level=1, sp=3, target='foe',
+                 effect='damage', dice='2d6', per=1, combat=True,
+                 text='A lance of mind-fire at one foe.'),
+    'LUME': dict(name='Witchlight', school='psi', level=1, sp=2,
+                 target='none', effect='light', light=5.0, turns=300,
+                 combat=False, text='Cold light that shows the far halls.'),
+    'STRM': dict(name='Mind Storm', school='psi', level=2, sp=6,
+                 target='group', effect='damage', dice='2d6', per=1,
+                 combat=True, text='Psychic fire through a group of foes.'),
+    'SCRY': dict(name='Far Sight', school='psi', level=2, sp=4,
+                 target='none', effect='locate', combat=False,
+                 text='Shows where you are and the decks around you.'),
+    'BARR': dict(name='Kinetic Barrier', school='psi', level=3, sp=5,
+                 target='party', effect='ward', amount=2, combat=True,
+                 text='The squad is harder to hit this fight.'),
+    'STUN': dict(name='Psychic Scream', school='psi', level=3, sp=6,
+                 target='group', effect='sleep', immune=['machine'],
+                 combat=True, text='Stuns a group of living foes.'),
+    'TEMP': dict(name='Void Tempest', school='psi', level=4, sp=11,
+                 target='foes', effect='damage', dice='3d6', per=1,
+                 combat=True, text="A storm of force on every foe within "
+                                   "30'."),
+    'STEP': dict(name='Phase Step', school='psi', level=4, sp=9,
+                 target='none', effect='phase', combat=False,
+                 text='Step through the bulkhead in front of you.'),
+    'RIFT': dict(name='Rift Lance', school='psi', level=5, sp=16,
+                 target='foe', effect='damage', dice='8d8', per=2,
+                 combat=True, text='Tears one foe apart.'),
+    'RECL': dict(name='Translocation', school='psi', level=5, sp=14,
+                 target='none', effect='recall', combat=False,
+                 text='Carries the squad back to the Unbending Vow.'),
+    # the Confessor's rites
+    'MEND': dict(name='Field Rite', school='rite', level=1, sp=2,
+                 target='ally', effect='heal', dice='2d6', per=1,
+                 combat=True, text='Heals one brother.'),
+    'FURY': dict(name='Litany of Fury', school='rite', level=1, sp=3,
+                 target='party', effect='bless', amount=2, combat=True,
+                 text='The squad strikes truer this fight.'),
+    'PURG': dict(name='Purifying Rite', school='rite', level=2, sp=4,
+                 target='ally', effect='cure', combat=True,
+                 text='Cures infection and stunning.'),
+    'ABJR': dict(name='Rite of Abjuration', school='rite', level=2, sp=5,
+                 target='group', effect='turn', tag='hollowed', combat=True,
+                 text='Frees a group of the hollowed from the Brood.'),
+    'SGHT': dict(name="Saint's Sight", school='rite', level=3, sp=5,
+                 target='none', effect='sight', turns=200, combat=False,
+                 text='Reveals hidden hatches as you walk.'),
+    'BNDC': dict(name='Benediction', school='rite', level=3, sp=9,
+                 target='party', effect='heal', dice='2d8', per=1,
+                 combat=True, text='Heals the whole squad.'),
+    'WRTH': dict(name="Emperor's Wrath", school='rite', level=4, sp=8,
+                 target='foe', effect='smite', dice='4d8', per=1,
+                 bane='xenos', combat=True,
+                 text='Holy fire on one foe, doubled against the alien.'),
+    'RISE': dict(name='Rite of Return', school='rite', level=5, sp=20,
+                 target='ally', effect='raise', combat=False,
+                 text='Calls a fallen brother back from death.'),
+    # what grenades and charges do
+    'FRAG': dict(name='Frag Grenade', school='item', level=9, sp=0,
+                 target='group', effect='damage', dice='3d6', per=0,
+                 combat=True, text='Shrapnel through a group.'),
+    'MELT': dict(name='Melta Charge', school='item', level=9, sp=0,
+                 target='foe', effect='damage', dice='6d6', per=0,
+                 combat=True, text='Melts one foe.'),
+})
+
+rules.UNLIVING.clear()
+rules.UNLIVING.add('machine')
+
+rules.MONSTERS.clear()
+rules.MONSTERS.update({
+    'broodling':  dict(name='Broodling', plural='Broodlings', art='broodling',
+                       level=1, hp='1d8', ac=7, hits=1, dmg='1d4', xp=8,
+                       gold='1d4', group=(3, 6), tags=['xenos'],
+                       special=['poison:10']),
+    'thrall':     dict(name='Hollowed Thrall', plural='Hollowed Thralls',
+                       art='thrall', level=1, hp='2d6', ac=8, hits=1,
+                       dmg='1d6', xp=10, gold='1d6', group=(2, 5),
+                       tags=['hollowed']),
+    'choir':      dict(name='Choir Gunner', plural='Choir Gunners',
+                       art='choir', level=2, hp='2d8', ac=7, hits=1,
+                       dmg='1d6', xp=22, gold='3d6', group=(2, 4),
+                       range=True, shoots='fires at', tags=['hollowed']),
+    'sentinel':   dict(name='Rogue Sentinel', plural='Rogue Sentinels',
+                       art='sentinel', level=3, hp='4d8', ac=3, hits=1,
+                       dmg='1d8', xp=40, gold='2d10', group=(1, 2),
+                       range=True, shoots='fires a burst at',
+                       tags=['machine']),
+    'stalker':    dict(name='Stalker', plural='Stalkers', art='stalker',
+                       level=3, hp='3d8+3', ac=4, hits=2, dmg='1d6', xp=40,
+                       gold='2d8', group=(1, 3), tags=['xenos']),
+    'spitter':    dict(name='Spitter', plural='Spitters', art='spitter',
+                       level=3, hp='3d8', ac=6, hits=1, dmg='1d6', xp=40,
+                       gold='2d8', group=(1, 2), range=True,
+                       shoots='spits acid at', tags=['xenos'],
+                       special=['breath:2d6:25', 'poison:20'],
+                       breath_msg='sprays a fan of acid!'),
+    'whisperer':  dict(name='Whisperer', plural='Whisperers',
+                       art='whisperer', level=5, hp='4d8', ac=5, hits=1,
+                       dmg='1d6', xp=100, gold='4d10', group=(1, 2),
+                       range=True, shoots='lashes the mind of',
+                       tags=['xenos'],
+                       special=['cast:LNCE:40', 'paralyze:15']),
+    'broodguard': dict(name='Brood Guard', plural='Brood Guards',
+                       art='broodguard', level=5, hp='6d8', ac=2, hits=2,
+                       dmg='1d8+1', xp=90, gold='3d10', group=(1, 3),
+                       tags=['xenos']),
+    'ravager':    dict(name='Ravager', plural='Ravagers', art='ravager',
+                       level=6, hp='6d10', ac=3, hits=3, dmg='1d6+2',
+                       xp=140, gold='4d10', group=(1, 2), tags=['xenos']),
+    'choirmaster': dict(name='Choirmaster', plural='Choirmasters',
+                        art='choir', level=7, hp='8d8', ac=5, hits=1,
+                        dmg='1d8', xp=300, gold='10d10', group=(1, 1),
+                        range=True, shoots='fires at', tags=['hollowed'],
+                        special=['cast:STRM:45']),
+    'warden':     dict(name='Iron Warden', plural='Iron Wardens',
+                       art='warden', level=6, hp='10d8', ac=1, hits=2,
+                       dmg='2d6', xp=300, gold='6d10', group=(1, 1),
+                       range=True, shoots='fires its cannon at',
+                       tags=['machine'], special=['breath:2d6:30'],
+                       breath_msg='belches a sheet of flame!'),
+    'matriarch':  dict(name='Brood Matriarch', plural='Brood Matriarchs',
+                       unique=True, art='matriarch', level=12,
+                       hp='20d10+130', ac=-2, acts=2, hits=2, dmg='2d8+3',
+                       xp=3000, gold='0', tags=['xenos'],
+                       special=['breath:4d6:35', 'paralyze:12'],
+                       breath_msg='lets out a psychic shriek!'),
+})
+
+KITS = {
+    'Sergeant':   ['rifle', 'voidplate'],
+    'Assault':    ['maul', 'voidplate'],
+    'Gunner':     ['repeater', 'voidplate'],
+    'Techwright': ['rifle', 'harness'],
+    'Confessor':  ['maul', 'voidplate'],
+    'Psion':      ['sidearm', 'harness'],
+}
+
+PARTY = [
+    dict(name='Dask', race='Feral-born', cls='Assault', st=18, iq=8, dx=12,
+         cn=17, lk=10, hp=14),
+    dict(name='Sgt Varro', race='Hive-born', cls='Sergeant', st=16, iq=12,
+         dx=14, cn=15, lk=12, hp=14),
+    dict(name='Holm', race='Forge-born', cls='Gunner', st=16, iq=12, dx=13,
+         cn=16, lk=9, hp=13),
+    dict(name='Ferro', race='Forge-born', cls='Techwright', st=12, iq=16,
+         dx=16, cn=13, lk=12, hp=9, pack=['flare', 'flare']),
+    dict(name='Ansel', race='Hive-born', cls='Confessor', st=14, iq=15,
+         dx=11, cn=14, lk=12, hp=11, pack=['medipack']),
+    dict(name='Mira Vey', race='Void-born', cls='Psion', st=9, iq=18, dx=15,
+         cn=10, lk=13, hp=7, pack=['medipack']),
+]
+
+# ------------------------------------------------------------ the music
+
+MUSIC = {
+    'title': {
+        'tempo': 110, 'bar': 8,
+        'chords': 'Cm Cm Ab G  Cm Fm G Cm',
+        'lead': ('square', 0.25, 0.06),
+        'melody': """
+            C4 - - - G4 - - -     | Eb5 - - - D5 - C5 -   |
+            Ab4 - - - G4 - F4 -   | G4 - - - - - - -      |
+            C5 - - - Bb4 - Ab4 -  | F4 - - - Ab4 - C5 -   |
+            B4 - - - D5 - G4 -    | C4 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 - - - - - - -'),
+                   ('square', 0.125, 0.02, '. . F3 - . . T3 -')],
+        'drums': 'k . . . . . s .',
+    },
+    'ship': {
+        'tempo': 130, 'bar': 8,
+        'chords': 'F Bb C F  Dm Bb C F',
+        'lead': ('triangle', 0.5, 0.1),
+        'melody': """
+            A4 - - - C5 - - -     | D5 - - - Bb4 - - -    |
+            G4 - - - C5 - - -     | A4 - - - - - - -      |
+            D5 - - - C5 - - -     | Bb4 - A4 - G4 - - -   |
+            G4 - - - E4 - - -     | F4 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 - - - F2 - - -'),
+                   ('square', 0.25, 0.03, 'T3 - - - R4 - - -')],
+        'drums': '. . . . . . . .',
+    },
+    'wreck': {
+        'tempo': 150, 'bar': 8,
+        'chords': 'Em Em C B  Em Em Am B',
+        'lead': ('square', 0.125, 0.05),
+        'melody': """
+            E4 - - - . . G4 -     | F#4 - - - . . E4 -    |
+            . . C4 - E4 - G4 -    | F#4 - - - D#4 - - -   |
+            E4 - . . B4 - - -     | A4 - G4 - F#4 - E4 -  |
+            A4 - - - C5 - - -     | B4 - - - . . . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 . R2 . R2 . R2 .')],
+        'drums': 'k . . k . . s .',
+    },
+    'nave': {
+        'tempo': 120, 'bar': 8,
+        'chords': 'Am F C G  Am Dm E Am',
+        'lead': ('triangle', 0.5, 0.09),
+        'melody': """
+            A4 - - - C5 - E5 -    | F5 - - - E5 - D5 -    |
+            E5 - - - G4 - C5 -    | B4 - - - - - - -      |
+            A4 - - - E5 - - -     | F5 - E5 - D5 - - -    |
+            E5 - - - G#4 - B4 -   | A4 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.18, 'R2 - - - - - - -'),
+                   ('square', 0.125, 0.02, '. T3 . F3 . T3 . F3')],
+        'drums': 'k . . . . . . .',
+    },
+    'hive': {
+        'tempo': 160, 'bar': 8,
+        'chords': 'Dm Dm Eb Dm  Dm Gm A Dm',
+        'lead': ('square', 0.125, 0.05),
+        'melody': """
+            D4 - . D4 - . F4 -    | E4 - . . D4 - - -     |
+            Eb4 - . Eb4 - . G4 -  | F4 - E4 - D4 - - -    |
+            A4 - . A4 - . C5 -    | Bb4 - A4 - G4 - - -   |
+            C#5 - - - A4 - - -    | D4 - - - . . . .""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 R2 . R2 R2 . . .'),
+                   ('square', 0.125, 0.02, '. . . . F3 - - -')],
+        'drums': 'k . . k . . k .',
+    },
+    'combat': {
+        'tempo': 300, 'bar': 8,
+        'chords': 'Cm Cm Ab Bb  Cm Cm Ab G',
+        'lead': ('square', 0.25, 0.06),
+        'melody': """
+            C4 C4 Eb4 C4 G4 C4 Eb4 C4  | C5 - Bb4 - G4 - Eb4 -   |
+            Ab4 - C5 - Eb5 - C5 -      | Bb4 - D5 - F5 - D5 -    |
+            C4 C4 Eb4 C4 G4 C4 Eb4 C4  | Eb5 - D5 - C5 - G4 -    |
+            Ab4 - G4 - F4 - Eb4 -      | D4 - - - B3 - - -""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 R3 R2 R3 R2 R3 R2 R3'),
+                   ('square', 0.125, 0.025, 'T4 . F4 . T4 . F4 .')],
+        'drums': 'k h s h k k s h',
+    },
+    'victory': {
+        'tempo': 200, 'bar': 8, 'loop': False,
+        'chords': 'C F G C',
+        'lead': ('square', 0.25, 0.07),
+        'melody': """
+            G4 - C5 - E5 - G5 -   | A5 - - - F5 - C6 -    |
+            B5 - G5 - D5 - B5 -   | C6 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 - - - R2 - - -'),
+                   ('square', 0.25, 0.03, 'T4 - F4 - T4 - F4 -')],
+        'drums': 'k . . . s . . .',
+    },
+}
+
+# ----------------------------------------------------- the Unbending Vow
+
+SHIP = dict(
+    name='The Unbending Vow',
+    music='ship',
+    theme=dict(wall='vow_wall', door='vow_door', locked='vow_door',
+               floor='vow_floor', ceil='vow_ceil', ambient=6.0,
+               variants=[('vow_port', 0.18), ('vow_banner', 0.08),
+                         ('vow_icon', 0.08)]),
+    map=[
+        "################",
+        "################",
+        "###C###A###R####",
+        "#s.............X",
+        "#####I###B######",
+        "################",
+    ],
+    legend={
+        'C': dict(solid=True, wall='vow_command', shop='guild',
+                  name='Command Deck', art='castellan', backdrop='vow_wall',
+                  greeting='Castellan Hadrek turns from the tactical '
+                           'hololith. "Report, Sergeant. The Saint\'s Hand, '
+                           'her Litany, her Heart, and the death of '
+                           'whatever nests in that wreck. Nothing less."'),
+        'A': dict(solid=True, wall='vow_armoury', shop='shop',
+                  name='The Armoury', art='quartermaster',
+                  backdrop='vow_wall',
+                  stock=['knife', 'sidearm', 'rifle', 'scattergun',
+                         'repeater', 'flamer', 'maul', 'axe', 'thermal',
+                         'arcwelder', 'harness', 'voidplate', 'siegeplate',
+                         'boardshield', 'helm', 'warhelm', 'servos',
+                         'medal', 'rounds', 'shells', 'fuel', 'medipack',
+                         'purgative', 'flare', 'frag', 'melta', 'beacon'],
+                  greeting='Quartermaster Bask looks up from a stripped '
+                           'repeater. "Requisition first, questions never. '
+                           'What do you need?"'),
+        'R': dict(solid=True, wall='vow_archive', shop='sage',
+                  name='The Archive', art='archivist', backdrop='vow_wall',
+                  price=10,
+                  greeting='Archivist Quell adjusts a brass lens. "The '
+                           'Benediction\'s records are fragmentary. For a '
+                           'small tithe of requisition I will search them."',
+                  lore='"The Benediction was Saint Orsolya\'s flagship on '
+                       'the Kessa crusade. When she fell, her crew sealed '
+                       'her body in the nave and her relics in three '
+                       'places: the Hand in a reliquary on the cargo decks, '
+                       'the Litany in the nave\'s vault, the Heart with her '
+                       'body. Then the ship jumped, and was never seen '
+                       'again. Until now."'),
+        'I': dict(solid=True, wall='vow_infirmary', shop='temple',
+                  name='The Infirmary', art='sister', backdrop='vow_wall',
+                  greeting='Sister Orla wipes her hands. "Bring them to me '
+                           'breathing, Sergeant, and I will keep them '
+                           'that way."'),
+        'B': dict(solid=True, wall='vow_barracks', shop='inn',
+                  name='The Barracks', art='steward', backdrop='vow_wall',
+                  price=4,
+                  greeting='Steward Pell bows. "Bunks, hot rations and '
+                           'clean water, brothers. Four requisition a head, '
+                           'as the Castellan orders."',
+                  news=['"The pilgrims\' ship is still docked on the far '
+                        'side of the wreck. No one has come out of it."',
+                        '"The Archivist says the Saint\'s Heart still '
+                        'beats. I don\'t like to think about it."',
+                        '"Brother Tavik\'s squad went over first, before '
+                        'you came. Their beacons went dark in the cargo '
+                        'holds."',
+                        '"Burn the thralls, the Confessor says, and pray '
+                        'over what\'s left. They were pilgrims once."']),
+        'X': dict(solid=True, wall='vow_airlock', goto=['deck1', 1, 1, 2],
+                  ask='The airlock cycles. Cross over into the '
+                      'Benediction?'),
+        's': dict(sprite='saint', once=True, title='The Shrine',
+                  msg='A statue of Saint Orsolya, her raised hand '
+                      'wreathed in fire. Someone has left a candle at her '
+                      'feet, and a scrap of parchment: "Bring her home."'),
+    },
+)
+
+# ------------------------------------------- deck one: the cargo holds
+
+DECK1 = dict(
+    name='The Cargo Decks',
+    depth=1,
+    music='wreck',
+    theme=dict(wall='wreck_wall', door='wreck_door', locked='wreck_locked',
+               floor='grating', ceil='wreck_ceil', stairs='lift_floor',
+               ambient=1.8,
+               variants=[('wreck_pipes', 0.15), ('wreck_hazard', 0.08),
+                         ('wreck_console', 0.05), ('wreck_breach', 0.04)]),
+    rate=0.05,
+    encounters=[
+        (5, [('thrall', 2, 5)]),
+        (4, [('broodling', 3, 6)]),
+        (3, [('choir', 2, 3)]),
+        (2, [('sentinel', 1, 2)]),
+        (1, [('stalker', 1, 1), ('broodling', 2, 4)]),
+    ],
+    map=[
+        "####################",
+        "#<...#......#......#",
+        "#.##.#.####.#.####.#",
+        "#.#a.#.#..#.#.#..#.#",
+        "#.####.#..#...#x.#.#",
+        "#......#.######.##.#",
+        "###.####.#.....m#..#",
+        "#...#....#.#.#.#...#",
+        "#.###.####.#.#.#.#.#",
+        "#.....#....#.#...#.#",
+        "#####.#.####.#####.#",
+        "#c..#.#....#.#.....#",
+        "#.#.#.####.#.#.#####",
+        "#.#...#..#.#...#...#",
+        "#.#####..#.#####.#.#",
+        "#...:::..#.......#.#",
+        "##:####S##########.#",
+        "#k...#.....#....=..#",
+        "#....#.w...#..>.#..#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='lift', goto=['ship', 14, 3, 3], once=True,
+                  title='The Benediction',
+                  ask='The airlock to the Unbending Vow. Return to the '
+                      'ship?',
+                  msg='The airlock seals behind you. The Benediction is '
+                      'cold and dark; your helm lamps show rusted '
+                      'bulkheads, and frost on the walls. Somewhere deep '
+                      'in the ship, something clicks.\n\nYour lamps light '
+                      'only a few paces. Flares, or a Psion\'s '
+                      'Witchlight, will show more.'),
+        'a': dict(sprite='fallen', once=True, title='Brother Tavik',
+                  msg='A brother of your Order lies here: Tavik, of the '
+                      'first squad. His armour is torn open from the '
+                      'inside. His data-slate still glows:\n\n"Red card '
+                      'needed for the lift to the nave. Corporal Ness had '
+                      'it. Ness went into the south-west hold. Ness did '
+                      'not come back."'),
+        'x': dict(trap=dict(dmg='2d6', msg='A severed power cable whips '
+                                           'across the deck in a storm of '
+                                           'sparks!')),
+        'm': dict(sprite='medstation', fountain='heal',
+                  look='A field medical station, still humming on the '
+                       'ship\'s last power. Use it?',
+                  drink='Needles and sealant foam: your wounds close.'),
+        'c': dict(sprite='crate', sprite_open='crate',
+                  chest=dict(gold='3d10+20',
+                                             items=['medipack', 'frag'],
+                                             trap='blast',
+                                             look='A supply crate, its '
+                                                  'seals intact.')),
+        'k': dict(sprite='fallen', fight=[('choir', 3), ('thrall', 3)],
+                  flag='redcard', item='redcard',
+                  fight_msg='Corporal Ness\'s body lies in the hold. Around '
+                            'it the hollowed crew of the Benediction sway '
+                            'and murmur, and the gunners among them raise '
+                            'their weapons.',
+                  item_msg='Ness\'s hand is still closed on a red '
+                           'keycard.'),
+        'S': dict(solid=True, secret=True),
+        'w': dict(sprite='reliquary', fight=[('warden', 1), ('sentinel', 2)],
+                  flag='burninghand', item='burninghand',
+                  fight_msg='A sealed chapel. Before its reliquary stands an '
+                            'Iron Warden, a war machine of the old crusade, '
+                            'still keeping its watch. Its targeting light '
+                            'falls on you. "INTRUDERS. THE SAINT IS NOT TO '
+                            'BE DISTURBED."',
+                  after='The Warden falls in a shower of sparks. The '
+                        'reliquary opens at your touch.',
+                  item_msg='Inside lies a gauntlet of red-gold, warm to '
+                           'the touch: the Burning Hand of Saint '
+                           'Orsolya.'),
+        '=': dict(solid=True, door='locked', key='redcard'),
+        '>': dict(floor='@stairs', goto=['deck2', 18, 1, 3],
+                  ask='A cargo lift. Ride it up to the nave?'),
+    },
+)
+
+# ---------------------------------------------------- deck two: the nave
+
+DECK2 = dict(
+    name='The Nave',
+    depth=2,
+    music='nave',
+    theme=dict(wall='nave_wall', door='nave_door', locked='nave_locked',
+               floor='nave_floor', ceil='nave_ceil', stairs='nave_lift',
+               ambient=1.6,
+               variants=[('nave_glass', 0.1), ('nave_candles', 0.08),
+                         ('nave_banner', 0.05), ('nave_skull', 0.08)]),
+    rate=0.055,
+    encounters=[
+        (3, [('thrall', 3, 5), ('choir', 1, 2)]),
+        (3, [('choir', 2, 4)]),
+        (3, [('stalker', 1, 3)]),
+        (2, [('spitter', 1, 2)]),
+        (2, [('whisperer', 1, 1), ('thrall', 2, 4)]),
+        (2, [('broodling', 4, 8)]),
+    ],
+    map=[
+        "####################",
+        "#.......#.....#...<#",
+        "#.#####.#.###.#.#..#",
+        "#.#t..#...#.#...#.##",
+        "#.#.#.#####.#####..#",
+        "#.#.#.......#...#..#",
+        "#...#####.#.#.#.##.#",
+        "###.#...#.#...#....#",
+        "#...#.#.#.#####x####",
+        "#.###.#...#..c#.#..#",
+        "#.#...#####.#.#.#..#",
+        "#.#.#.......#.....##",
+        "#.#.###.#####.###R##",
+        "#...#.k.#...#...#.L#",
+        "#####.#.#.#.#.#.#..#",
+        "#..p..#...#...#.#=##",
+        "#.###.#########.#..#",
+        "#.#m#.....#.....#.>#",
+        "#.........#.v.#.#..#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='lift', goto=['deck1', 14, 18, 0], once=True,
+                  title='The Nave',
+                  ask='The cargo lift. Ride it down to the cargo decks?',
+                  msg='The lift opens onto the Benediction\'s great nave: '
+                      'dark pillars, gilded arches, and stained glass '
+                      'lit from behind by dead stars. Candles still burn '
+                      'here, nine hundred years after anyone lit them.'),
+        't': dict(sprite='saint', once=True, title='The Tomb of Orsolya',
+                  msg='The Saint\'s tomb, and her statue above it. Her '
+                      'vow is carved around the plinth:\n\n"Where I '
+                      'stand, the dark shall not pass. My hand is fire, '
+                      'my heart is iron, my faith is the wall."\n\nThe '
+                      'tomb has been broken open from below. It is '
+                      'empty.'),
+        'x': dict(spin=True),
+        'c': dict(sprite='crate', sprite_open='crate',
+                  chest=dict(gold='4d10+30',
+                                             items=['medipack', 'purgative'],
+                                             trap='poison',
+                                             look='A pilgrims\' supply '
+                                                  'chest.')),
+        'k': dict(sprite='reliquary', fight=[('choirmaster', 1),
+                                             ('whisperer', 1), ('choir', 4)],
+                  flag='choir',
+                  fight_msg='At the high altar the hollowed congregation '
+                            'is at prayer, and their Choirmaster turns to '
+                            'you with eyes full of teal light. "The Mother '
+                            'sings," it says. "Come and listen."',
+                  item='melta', after='The choir is silent at last. Among '
+                                      'their offerings lies a melta '
+                                      'charge.'),
+        'R': dict(solid=True, riddle=dict(
+            flag='riddle', title='The Vault of the Litany',
+            q='A brass mask in the vault door speaks: "Pilgrim, speak '
+              'the Saint\'s vow. My hand is fire, my heart is iron, my '
+              'faith is the..."',
+            a=['wall', 'the wall'],
+            right='"Pass, pilgrim, and keep faith." The vault door rolls '
+                  'aside.',
+            wrong='"That is not her vow." The mask falls silent.')),
+        'L': dict(sprite='reliquary', item='litany', once=True,
+                  title='The Vault',
+                  msg='In the vault, on a lectern of black iron, lies a '
+                      'book bound in brass.',
+                  item_msg='You take up the Litany of Orsolya.'),
+        '=': dict(solid=True, door='locked', key='litany',
+                  locked_msg='The lift shrine is sealed with the Saint\'s '
+                             'sign. Only her Litany will open it.'),
+        '>': dict(floor='@stairs', goto=['deck3', 1, 1, 2],
+                  ask='The shrine lift descends into the ship\'s heart. '
+                      'Something below is breathing. Go down?'),
+        'p': dict(sprite='conduit', teleport=[18, 2, 2],
+                  tmsg='The transit shrine flares, and the nave lurches '
+                       'around you!'),
+        'm': dict(sprite='medstation', fountain='heal',
+                  look='A pilgrims\' medical shrine. Use it?',
+                  drink='Old machines hum; your wounds knit.'),
+        'v': dict(sprite='crate', sprite_open='crate',
+                  chest=dict(gold='60', items=['wardicon'],
+                                             trap='blast',
+                                             look='A sealed crate marked '
+                                                  'with the Saint\'s '
+                                                  'sign.')),
+    },
+)
+
+# --------------------------------------------------- deck three: the hive
+
+DECK3 = dict(
+    name='The Hive',
+    depth=3,
+    music='hive',
+    theme=dict(wall='hive_wall', door='hive_door', locked='hive_locked',
+               floor='hive_floor', ceil='hive_ceil', ambient=1.5,
+               variants=[('hive_pods', 0.12), ('hive_veins', 0.12),
+                         ('hive_eaten', 0.1)]),
+    rate=0.05,
+    encounters=[
+        (3, [('stalker', 2, 3)]),
+        (2, [('spitter', 2, 3)]),
+        (3, [('broodguard', 1, 3)]),
+        (2, [('ravager', 1, 2)]),
+        (2, [('whisperer', 1, 2), ('broodling', 3, 5)]),
+        (1, [('broodling', 6, 9)]),
+    ],
+    map=[
+        "####################",
+        "#<....#.....#......#",
+        "#.###.#.###.#.####.#",
+        "#.#...#.#...#.#..#.#",
+        "#.#.###.#.###.#.##.#",
+        "#.#.....#...#......#",
+        "#.#####.###.######.#",
+        "#.....#...#........#",
+        "#####.#.#.#####.#.##",
+        "#.....#.#.......#..#",
+        "#.#####.#########.##",
+        "#.......#....G.....#",
+        "######.#####=#######",
+        "#n...#.#...........#",
+        "#.##.#.#.p.......p.#",
+        "#.#..#.#...........#",
+        "#.#.##.#.p.......p.#",
+        "#.#....#.....M.....#",
+        "#c#....#.....H.....#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='lift', goto=['deck2', 18, 17, 0], once=True,
+                  title='The Hive',
+                  ask='The shrine lift. Ride it back up to the nave?',
+                  msg='The lift opens into the Benediction\'s heart, and '
+                      'the ship is gone. Resin and ribbed flesh have '
+                      'swallowed the bulkheads; the deck is soft '
+                      'underfoot, and the walls breathe.'),
+        'n': dict(antimagic=True, once=True, title='A Dead Place',
+                  msg='A pressure in your skull: the Brood\'s mind is so '
+                      'thick here that no power will answer.'),
+        'c': dict(sprite='pods', sprite_open='pods', antimagic=True,
+                  chest=dict(gold='3d20+60', items=['thermal', 'templar'],
+                             trap='poison',
+                             look='Half swallowed by the hive is a '
+                                  'crusader\'s arms locker.')),
+        'p': dict(sprite='pods'),
+        'G': dict(fight=[('broodguard', 4), ('ravager', 2)], flag='guards',
+                  fight_msg='Before a wall of bone-plate, the Brood\'s '
+                            'guardians unfold from the walls.',
+                  after='The guards are dead. The bone wall behind them '
+                        'pulses, as if something on the other side is '
+                        'listening.'),
+        '=': dict(solid=True, door='locked', key='burninghand',
+                  locked_msg='A wall of living bone-plate. Nothing you '
+                             'carry could cut it; but the Saint\'s Burning '
+                             'Hand might burn through.'),
+        'M': dict(fight=[('matriarch', 1)], flag='matriarch', run=False,
+                  sprite='matriarch', sprite_after='pods', item='heart',
+                  fight_msg='The chamber is a cathedral of flesh, and the '
+                            'Matriarch fills it. In her claws she cradles '
+                            'a golden reliquary that beats like a heart.'
+                            '\n\nHer voice is inside your skull: "MINE. '
+                            'THE WARM ONE IS MINE."',
+                  after='The Matriarch convulses and dies, and all through '
+                        'the ship the Brood screams with her. Then '
+                        'silence.\n\nYour vox crackles: the Unbending Vow '
+                        'has locked on to your beacons.',
+                  item_msg='You pry the Heart of Orsolya from her claws.'),
+        'H': dict(sprite='lift', requires='matriarch',
+                  goto=['ship', 8, 3, 1],
+                  ask='The Vow\'s teleportarium has a lock on you. Return '
+                      'to the ship?'),
+    },
+)
+
+LEVELS = {'ship': SHIP, 'deck1': DECK1, 'deck2': DECK2, 'deck3': DECK3}
+
+HINTS = [
+    ('redcard', '"Brother Tavik\'s squad reported that the lift to the '
+                'nave needs a red keycard. Their corporal carried one into '
+                'the south-west cargo hold."'),
+    ('burninghand', '"The cargo manifests list a reliquary chapel, sealed '
+                    'behind a maintenance hatch at the end of the lower '
+                    'corridor. Hatches look like any other bulkhead: '
+                    'search (F), or walk into the walls."'),
+    ('riddle', '"The Litany lies in a vault in the nave. Its door asks for '
+               'the Saint\'s vow, which is carved on her tomb in the '
+               'north-west of the nave."'),
+    ('guards', '"The shrine lift needs the Litany to open. Below it, the '
+               'hive. Bring flamers, and the Confessor\'s rites: Emperor\'s '
+               'Wrath burns the alien twice over."'),
+    ('matriarch', '"The Brood\'s queen lies beyond a wall of bone. The '
+                  'Saint\'s Burning Hand will burn through it. She cannot '
+                  'be stunned, and her shriek strikes every one of you: '
+                  'raise a barrier, and keep the Confessor fresh."'),
+    (None, '"Bring the relics to the Castellan, Sergeant."'),
+]
+
+# --------------------------------------------------------------- the end
+
+
+def command_hook(g, sq):
+    """Bringing the relics home, with the Matriarch dead, ends the game."""
+    if g.st.won:
+        return False
+    if not (g.flag('matriarch') and g.has_item('burninghand') and
+            g.has_item('litany') and g.has_item('heart')):
+        return False
+    g.take_item('litany')
+    g.take_item('heart')
+    g.victory([
+        dict(art='castellan', title='The Relics',
+             text="Castellan Hadrek takes the Litany and the Heart in his "
+                  "own hands, and bows his head over the Burning Hand on "
+                  "your Sergeant's arm.\n\n\"The Saint comes home,\" he "
+                  "says. \"Nine hundred years. The Order will sing of "
+                  "this squad.\""),
+        dict(art='saint',
+             text="The Unbending Vow turns for Terra with the relics in "
+                  "her chapel. Behind her, at a safe distance, the "
+                  "Benediction burns: the Castellan has ordered the wreck "
+                  "cleansed by fire, every deck, so that nothing of the "
+                  "Brood survives."),
+        dict(art='title', title='The End',
+             text="Your names are added to the Order's roll of honour, "
+                  "beside the Saint's.\n\nYou may go on exploring the "
+                  "wreck as long as you like.\n\nThank you for playing."),
+    ])
+    return True
+
+
+HOOKS = {'shop:guild': command_hook}
+
+
+if __name__ == '__main__':
+    blobber.run(sys.modules[__name__])

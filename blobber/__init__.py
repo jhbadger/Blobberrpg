@@ -205,7 +205,9 @@ def selftest(gdef):
     # a few rounds of a fight
     from .combat import CombatMode
     g.st.level = gdef.START[0]
-    g.start_combat([('skeleton', 3), ('rat', 2)])
+    kinds = [k for L in g.levels.values() for _, grp in L.encounters
+             for (k, lo, hi) in grp] or list(MONSTERS)
+    g.start_combat([(kinds[0], 3), (kinds[-1], 2)])
     for _ in range(200):
         g.key('enter')
         g.update(1.0)

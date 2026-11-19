@@ -76,9 +76,9 @@ class TitleMode(Mode):
     def options(self, g):
         opts = []
         if g.has_save():
-            opts.append(('Continue the adventure', 'load'))
-        opts.append(('Begin a new adventure', 'new'))
-        opts.append(('Quit', 'quit'))
+            opts.append((w('continue'), 'load'))
+        opts.append((w('new_game'), 'new'))
+        opts.append((w('quit'), 'quit'))
         return opts
 
     def draw(self, g, s):
@@ -107,8 +107,8 @@ class TitleMode(Mode):
             s.text(TX + TW // 2, y, label, col, align='center')
             self.rects.append((y - 1, y + font.LINE - 1, v))
             y += font.LINE + 3
-        s.text(TX + TW // 2, TY + TH - 10, 'A blobber made with the Blobber '
-               'engine', INK_DIM, align='center')
+        s.text(TX + TW // 2, TY + TH - 10, w('credit'), INK_DIM,
+               align='center')
 
     def key(self, g, k):
         opts = self.options(g)
@@ -420,7 +420,7 @@ class SheetMode(Mode):
                                               if bonus(c.st) and not
                                               weapon.get('range') else '')),
                 ('Attacks', str(c.attacks())),
-                ('Condition', c.status.capitalize())]
+                ('Condition', w(c.status))]
         if weapon.get('ammo'):
             info.insert(5, (weapon['ammo'].capitalize(),
                             str(g.st.supplies.get(weapon['ammo'], 0))))

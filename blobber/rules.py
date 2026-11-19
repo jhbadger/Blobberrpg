@@ -69,6 +69,7 @@ CLASSES = {
                          'and learns priest prayers from third level.'),
     'Rogue':   dict(abbr='RO', hd=6, atk=0.75, magic=None, every=0,
                     gear={'blade', 'blunt', 'light', 'bow'},
+                    skills={'locks', 'traps', 'search'},
                     text='Picks locks, disarms traps on chests, and strikes '
                          'hard from behind the front line.'),
     'Priest':  dict(abbr='PR', hd=8, atk=0.67, magic='priest', every=0,
@@ -80,6 +81,12 @@ CLASSES = {
                     text='Weak in body, mighty in spells: fire, frost, '
                          'light and the secrets of the maze.'),
 }
+
+def skilled(c, skill):
+    """Whether a character's class has a skill: 'locks' (pick locks),
+    'traps' (disarm chests) or 'search' (find hidden doors)."""
+    return skill in CLASSES[c.cls].get('skills', ())
+
 
 XP_TABLE = [0, 0, 120, 300, 600, 1000, 1600, 2500, 3800, 5600, 8000, 11000,
             15000, 20000]

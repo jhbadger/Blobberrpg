@@ -779,12 +779,23 @@ def stone_panel(w, h, seed, base='#8e8c88', mortar='#4a4844', bands=None):
     return bytes(out)
 
 
-def parchment(w, h, seed=5):
+def texture_panel(w, h, name, shade=1.0):
+    """Bytes of a w x h panel tiled from a texture."""
+    tex = textures.get(name)
+    T = textures.T
+    out = bytearray()
+    for y in range(h):
+        for x in range(w):
+            out += bytes(scale(tex[(y % T) * T + (x % T)], shade))
+    return bytes(out)
+
+
+def parchment(w, h, seed=5, base='#e2c894', edge='#9a6a30'):
     rng = random.Random(seed)
     n = textures.fbm(rng)
     T = textures.T
-    base = rgb('#e2c894')
-    edge = rgb('#9a6a30')
+    base = rgb(base)
+    edge = rgb(edge)
     px = []
     for y in range(h):
         for x in range(w):
@@ -797,10 +808,10 @@ def parchment(w, h, seed=5):
     return px
 
 
-def scroll_roll(w, h):
+def scroll_roll(w, h, lo='#6a3e14', hi='#e8b858'):
     """Pixels of the wooden roller at the top or bottom of a scroll."""
     px = []
-    lo, hi = rgb('#6a3e14'), rgb('#e8b858')
+    lo, hi = rgb(lo), rgb(hi)
     for y in range(h):
         t = 1 - abs((y + 0.5) / h * 2 - 1)
         for x in range(w):
