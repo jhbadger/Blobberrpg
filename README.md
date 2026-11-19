@@ -96,10 +96,23 @@ The engine itself wasn't forked to make it.
 | Esc | the game menu: save, sound, music, fight speed, quit |
 | ? | help |
 
-With the mouse, click the left or right third of the view to turn and the
-middle to walk. Click a roster line to open that character's sheet, and
-click choices on the scroll. F11 toggles full screen. The window scales
-to fit whatever size you give it.
+With the mouse or a touch screen, tap the left or right third of the view
+to turn, the middle to walk, and the bottom of the middle to step back.
+The buttons under the scroll do what the keys do (act, cast, map, search,
+help, menu). Tap a roster line to open that character's sheet, which has
+buttons of its own, and tap choices on the scroll. Names and riddle
+answers have an on-screen keyboard. F11 toggles full screen. The window
+scales to fit whatever size you give it.
+
+### On Android
+
+The games run in Pydroid 3 like the tilerpgs: open `ashencrypt` or
+`benediction` (with the `blobber` folder, and for Benediction
+`benediction_art.py`, beside it) and press Run. Pydroid only opens a
+window for a script that imports `tkinter` itself, which is why each game
+script does. For sound, install `pyjnius` (Android's own player) or
+`pygame` (SDL's mixer) from Pydroid's pip; without either the game is
+silent.
 
 In a fight the party chooses to fight or run. Each character then gets an
 order (attack, defend, cast or use an item) and the round plays out a line
@@ -129,7 +142,7 @@ barracks, or quit.
 | `modes.py` | title, exploring, map, character sheet, game over, ending |
 | `combat.py` | fights |
 | `town.py` | Guild, shop, temple, inn and sage |
-| `sound.py` | synthesized sound effects and the music player (afplay, paplay/aplay or winsound) |
+| `sound.py` | synthesized sound effects and the music player (afplay, paplay/aplay, Android's MediaPlayer through pyjnius, pygame's mixer, or winsound) |
 | `music.py` | chiptune tunes in the tilerpgs' notation, and their synthesizer |
 | `words.py` | every word the engine puts on screen, which a game can change |
 | `balance.py` | a simulated player that measures a game's difficulty |

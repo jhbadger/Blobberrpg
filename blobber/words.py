@@ -26,6 +26,7 @@ DEFAULTS = {
     'pts':          'Spell Pts',        # roster heading
     'sp':           'SP',
     'cast':         'Cast a spell',     # combat order
+    'cast_short':   'Cast',             # its tap button
     'casts':        'casts',            # "Elowen casts Arc Bolt!"
     'who_casts':    'Who casts?',
     'none_cast':    'No one can cast a spell now.',

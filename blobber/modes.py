@@ -1,7 +1,7 @@
 """The game's screens: the title, walking about, the map, character
 sheets, the game menu, help, defeat and victory."""
 
-from .game import (Mode, Menu, Say, W, H, VX, VY, VW, VH, PX, PY, PW, PH,
+from .game import (Mode, Menu, Say, draw_buttons, hit_button, W, H, VX, VY, VW, VH, PX, PY, PW, PH,
                    TX, TY, TW, TH, RX, RY, RW, RH, INK, INK_DIM, INK_HI,
                    INK_TITLE)
 from .gfx import rgb, mix
@@ -18,8 +18,9 @@ C: %s.   1-6: a character's sheet (items, equipment).
 M: the map.   F: search for hidden doors.
 Esc: the game menu (save, sound, quit).   ?: this help.
 
-Mouse: click the left or right of the view to turn, the middle to walk; \
-click a character to see their sheet; click choices on the scroll.
+Mouse or touch: tap the left or right of the view to turn, the middle to \
+walk (the bottom of the middle to step back); tap a character for their \
+sheet, choices on the scroll, and the buttons under it.
 
 In a fight, give each character an order, then watch the round play out. \
 Only the first three can fight hand to hand."""
@@ -160,9 +161,15 @@ class TitleMode(Mode):
 # ---------------------------------------------------------------- exploring
 
 class ExploreMode(Mode):
+    def buttons(self):
+        return [('Act', 'enter'), (w('cast_short'), 'c'), ('Map', 'm'),
+                ('Search', 'f'), ('Help', '?'), ('Menu', 'esc')]
+
     def draw(self, g, s):
         g.draw_scene(s)
-        g.draw_log(s)
+        g.draw_log(s, bottom=TY + TH - 16)
+        self.rects = draw_buttons(s, self.buttons(), TX - 6, TY + TH - 12,
+                                  TW + 12)
 
     def key(self, g, k):
         if k in ('up', 'w'):
@@ -218,6 +225,10 @@ class ExploreMode(Mode):
             g.say('You see nothing special.')
 
     def click(self, g, x, y):
+        b = hit_button(getattr(self, 'rects', []), x, y)
+        if b:
+            self.key(g, b)
+            return
         if VX <= x < VX + VW and VY <= y < VY + VH:
             third = (x - VX) * 3 // VW
             if third == 0:
@@ -483,9 +494,12 @@ class SheetMode(Mode):
                     'weapon', 'armor', 'shield', 'helm', 'gloves', 'ring'):
                 desc += '  (%s cannot use this)' % c.cls
             s.text(ex - 4, y - 14, desc[:52], dim)
-        s.text(x0 + 14, y0 + hh - 18,
-               'Enter: equip/use/remove   T: trade   D: drop   '
-               '<- ->: next character   Esc: back', dim)
+        self.btns = draw_buttons(s, [('Use / Wear', 'enter'),
+                                     ('Trade', 't'), ('Drop', 'd'),
+                                     (font.LEFT + ' Prev', 'left'),
+                                     ('Next ' + font.RIGHT, 'right'),
+                                     ('Back', 'esc')],
+                                 x0 + 12, y0 + hh - 20, ww - 24)
 
     def key(self, g, k):
         c = g.party[self.i]
@@ -562,19 +576,20 @@ class SheetMode(Mode):
                   give, on_cancel=lambda: None)
 
     def click(self, g, x, y):
+        b = hit_button(getattr(self, 'btns', []), x, y)
+        if b:
+            self.key(g, b)
+            return
         if RY <= y < RY + RH:
             i = (y - RY - 19) // 15
             if 0 <= i < len(g.party):
                 self.i = i
+                self.sel = 0
             return
         for (n, ry) in self.rows:
             if ry - 1 <= y < ry + font.LINE - 1 and x > 340:
-                if self.sel == n:
-                    self.key(g, 'enter')
                 self.sel = n
                 return
-        if y > 240:
-            g.pop(self)
 
 
 def describe(it):

@@ -1,7 +1,8 @@
 """Synthesized sound effects and music, written once as WAV files and
-played with whatever the system has (afplay on macOS, paplay or aplay on
-Linux, winsound on Windows for effects only).  With none of these the game
-is silent.  Music is rendered in the background the first time and cached
+played with whatever the system has: afplay on macOS, paplay or aplay on
+Linux, Android's MediaPlayer through pyjnius or pygame's mixer (Pydroid),
+or winsound on Windows (effects only).  With none of these the game is
+silent.  Music is rendered in the background the first time and cached
 in ~/.cache/<game>, named by a checksum so an edited tune is rendered
 again."""
 
@@ -124,27 +125,173 @@ def write_wav(path, samples):
                                for s in samples))
 
 
+ANDROID = hasattr(sys, 'getandroidapilevel') or 'ANDROID_ROOT' in os.environ
+
+
+# Players.  Each starts a WAV file and returns a handle that, like a
+# subprocess, has poll() (None while it plays) and terminate().
+
+class CommandPlayer:
+    """A command-line player: afplay, paplay or aplay."""
+    music = True
+
+    def __init__(self, cmd):
+        self.cmd = cmd
+
+    def start(self, path):
+        return subprocess.Popen(self.cmd + [path], stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+
+    @classmethod
+    def find(cls):
+        for cmd in (['afplay'], ['paplay'], ['aplay', '-q']):
+            if shutil.which(cmd[0]):
+                return cls(cmd)
+        return None
+
+
+class MediaPlayer:
+    """Android's android.media.MediaPlayer, through pyjnius (pip install
+    pyjnius in Pydroid)."""
+    music = True
+
+    class Handle:
+        def __init__(self, mp):
+            self.mp = mp
+
+        def poll(self):
+            if self.mp is None:
+                return 0
+            try:
+                if self.mp.isPlaying():
+                    return None
+            except Exception:
+                pass
+            self.terminate()
+            return 0
+
+        def terminate(self):
+            if self.mp is not None:
+                try:
+                    self.mp.stop()
+                except Exception:
+                    pass
+                self.mp.release()
+                self.mp = None
+
+    def __init__(self, cls):
+        self.cls = cls
+
+    def start(self, path):
+        mp = self.cls()
+        try:
+            mp.setDataSource(path)
+            mp.prepare()
+            mp.start()
+        except Exception as e:
+            mp.release()
+            raise OSError(str(e))
+        return self.Handle(mp)
+
+    @classmethod
+    def find(cls):
+        try:
+            import importlib
+            jnius = importlib.import_module('jnius')
+            return cls(jnius.autoclass('android.media.MediaPlayer'))
+        except Exception:
+            return None
+
+
+class MixerPlayer:
+    """SDL's mixer, through pygame.  Pydroid chooses how to run a script
+    from the modules it imports, so the module's name is put together at
+    run time: a Tk game must not be started as an SDL one."""
+    music = True
+
+    class Handle:
+        def __init__(self, channel, snd):
+            self.channel, self.snd = channel, snd
+
+        def poll(self):
+            ch = self.channel
+            if ch and ch.get_busy() and ch.get_sound() is self.snd:
+                return None
+            return 0
+
+        def terminate(self):
+            if self.poll() is None:
+                self.channel.stop()
+
+    def __init__(self, mixer):
+        self.mixer = mixer
+        self.sounds = {}
+
+    def start(self, path):
+        snd = self.sounds.get(path)
+        if snd is None:
+            try:
+                snd = self.sounds[path] = self.mixer.Sound(path)
+            except Exception as e:
+                raise OSError(str(e))
+        return self.Handle(snd.play(), snd)
+
+    @classmethod
+    def find(cls):
+        try:
+            import importlib
+            os.environ.setdefault('PYGAME_HIDE_SUPPORT_PROMPT', '1')
+            mixer = importlib.import_module('py' + 'game.mixer')
+            mixer.init(RATE, -16, 1, 512)
+            mixer.set_num_channels(8)
+            return cls(mixer)
+        except Exception:
+            return None
+
+
+class WinsoundPlayer:
+    """Windows' winsound: one sound at a time, so effects only."""
+    music = False
+
+    class Handle:
+        def poll(self):
+            return 0
+
+        def terminate(self):
+            pass
+
+    def __init__(self, ws):
+        self.ws = ws
+
+    def start(self, path):
+        self.ws.PlaySound(path, self.ws.SND_FILENAME | self.ws.SND_ASYNC)
+        return self.Handle()
+
+    @classmethod
+    def find(cls):
+        if not sys.platform.startswith('win'):
+            return None
+        try:
+            import winsound
+            return cls(winsound)
+        except ImportError:
+            return None
+
+
+def find_player():
+    player = CommandPlayer.find()
+    if not player and ANDROID:
+        player = MediaPlayer.find()
+    return player or WinsoundPlayer.find() or MixerPlayer.find()
+
+
 class Sound:
     def __init__(self, game_id):
         self.on = True
         self.dir = os.path.join(os.path.expanduser('~'), '.cache', game_id)
-        self.cmd = None
-        self.winsound = None
-        if sys.platform == 'darwin' and shutil.which('afplay'):
-            self.cmd = ['afplay']
-        elif sys.platform.startswith('win'):
-            try:
-                import winsound
-                self.winsound = winsound
-            except ImportError:
-                pass
-        else:
-            for c in (['paplay'], ['aplay', '-q']):
-                if shutil.which(c[0]):
-                    self.cmd = c
-                    break
+        self.player = find_player()
+        self.procs = []
         self.ready = set()
-        self.last = {}
         self.music_on = True
         self.tunes = {}             # name -> wav path, once rendered
         self.lengths = {}
@@ -156,7 +303,7 @@ class Sound:
 
     @property
     def available(self):
-        return bool(self.cmd or self.winsound)
+        return self.player is not None
 
     def path(self, name):
         return os.path.join(self.dir, name + '.wav')
@@ -172,19 +319,18 @@ class Sound:
                     write_wav(p, fn())
                 self.ready.add(name)
         except OSError:
-            self.cmd = self.winsound = None
+            self.player = None
 
     def play(self, name):
-        if not self.on or name not in self.ready:
+        """Play an effect, unless too many are still going: if the system's
+        audio is stuck, players never exit, and they must not pile up."""
+        if not self.on or name not in self.ready or not self.player:
             return
-        p = self.path(name)
+        self.procs = [h for h in self.procs if h.poll() is None]
+        if len(self.procs) >= 4:
+            return
         try:
-            if self.winsound:
-                self.winsound.PlaySound(p, self.winsound.SND_FILENAME |
-                                        self.winsound.SND_ASYNC)
-            elif self.cmd:
-                subprocess.Popen(self.cmd + [p], stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
+            self.procs.append(self.player.start(self.path(name)))
         except OSError:
             pass
 
@@ -192,7 +338,7 @@ class Sound:
 
     def prepare_music(self, tunes, first=('title',)):
         """Render tunes in a background thread, the first ones first."""
-        if not self.cmd:
+        if not self.player or not self.player.music:
             return
         from . import music
         order = sorted(tunes, key=lambda n: (n not in first, n))
@@ -236,16 +382,14 @@ class Sound:
             self.playing = None
         elif not running and not self.loops.get(want, True):
             return                      # a fanfare plays once
-        if path and self.cmd:
+        if path and self.player:
             try:
-                self.proc = subprocess.Popen(
-                    self.cmd + [path], stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL)
+                self.proc = self.player.start(path)
                 self.playing = want
                 self.deadline = time.monotonic() + \
                     self.lengths.get(path, 60) + 5
             except OSError:
-                self.cmd = None
+                self.player = None
 
     def stop_music(self):
         if self.proc is not None and self.proc.poll() is None:

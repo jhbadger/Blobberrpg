@@ -96,6 +96,39 @@ class State:
         return s
 
 
+# ---------------------------------------------------------------- buttons
+
+BTN_FACE = rgb('#7a5a34')
+BTN_HI = rgb('#c09860')
+BTN_LO = rgb('#2e1e0e')
+BTN_TEXT = rgb('#f6ecd4')
+
+
+def draw_buttons(s, buttons, x, y, w, h=14, gap=2):
+    """A row of tap buttons [(label, value), ...] filling width w from x;
+    returns [(x0, y0, x1, y1, value)] for hit_button()."""
+    rects = []
+    n = len(buttons)
+    if not n:
+        return rects
+    bw = (w - gap * (n - 1)) // n
+    for i, (label, value) in enumerate(buttons):
+        bx = x + i * (bw + gap)
+        s.rect(bx, y, bw, h, BTN_FACE)
+        s.bevel(bx, y, bw, h, BTN_HI, BTN_LO)
+        s.text(bx + bw // 2, y + (h - 9) // 2, label, BTN_TEXT,
+               align='center')
+        rects.append((bx, y, bx + bw, y + h, value))
+    return rects
+
+
+def hit_button(rects, x, y):
+    for (x0, y0, x1, y1, value) in rects:
+        if x0 <= x < x1 and y0 <= y < y1:
+            return value
+    return None
+
+
 # ------------------------------------------------------------------ modes
 
 class Mode:
@@ -240,6 +273,17 @@ class TextInput(Menu):
         tw = s.text(TX + 4, y + 1, self.value, INK)
         if int(self.blink * 2) % 2 == 0:
             s.rect(TX + 5 + tw, y, 5, 10, INK)
+        # a keyboard to tap, for phones
+        y += 20
+        self.rects = []
+        for row in ('ABCDEFGHIJ', 'KLMNOPQRST', "UVWXYZ'-.0"):
+            self.rects += draw_buttons(s, [(ch, ch) for ch in row], TX, y,
+                                       TW, 15)
+            y += 17
+        last = [('Space', 'space'), ('Delete', 'backspace'), ('OK', 'enter')]
+        if self.on_cancel:
+            last.append(('Cancel', 'esc'))
+        self.rects += draw_buttons(s, last, TX, y, TW, 15)
 
     def update(self, g, dt):
         old = int(self.blink * 2)
@@ -265,7 +309,14 @@ class TextInput(Menu):
             self.value += k.upper() if self.upper else k
 
     def click(self, g, x, y):
-        pass
+        k = hit_button(getattr(self, 'rects', []), x, y)
+        if k is None:
+            return
+        if len(k) == 1 and k.isalpha():
+            # tapped letters: capitals at the start of each word
+            k = k.upper() if (not self.value or self.value[-1] == ' ' or
+                              self.upper) else k.lower()
+        self.key(g, k)
 
 
 # ------------------------------------------------------------------- game
@@ -632,11 +683,11 @@ class Game:
         s.rect(NX, NY, NW, NH, (0, 0, 0))
         self.base = bytes(s.buf)
 
-    def draw_log(self, s, lines=None):
+    def draw_log(self, s, lines=None, bottom=TY + TH):
         lines = self.log if lines is None else lines
-        n = TH // font.LINE
+        n = (bottom - TY) // font.LINE
         show = lines[-n:]
-        y = TY + TH - len(show) * font.LINE
+        y = bottom - len(show) * font.LINE
         for i, (text, col) in enumerate(show):
             age = len(show) - 1 - i
             c = col or (INK if age < 6 else mix(INK, INK_DIM, min(1, (age - 5) / 8)))

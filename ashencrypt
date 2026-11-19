@@ -13,6 +13,13 @@ saved to ~/.ashencrypt.json.  ./ashencrypt --selftest checks the maps.
 import os
 import sys
 
+# Pydroid starts a script as a Tk app only if the script itself
+# imports tkinter; the engine importing it is not enough.
+try:
+    import tkinter                                     # noqa: F401
+except ImportError:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import blobber                                         # noqa: E402

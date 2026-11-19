@@ -17,6 +17,13 @@ and --balance plays its fights with a simulated player.
 import os
 import sys
 
+# Pydroid starts a script as a Tk app only if the script itself
+# imports tkinter; the engine importing it is not enough.
+try:
+    import tkinter                                     # noqa: F401
+except ImportError:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import blobber                                         # noqa: E402
@@ -69,7 +76,7 @@ WORDS = {
     'chest_money': 'Inside is materiel worth %d requisition.',
     'magic': 'power', 'Magic': 'Powers',
     'points': 'power points', 'Points': 'Power', 'pts': 'Power', 'sp': 'PP',
-    'cast': 'Use a power', 'casts': 'invokes',
+    'cast': 'Use a power', 'casts': 'invokes', 'cast_short': 'Power',
     'who_casts': 'Who invokes a power?',
     'none_cast': 'No one can use a power now.',
     'too_few': '%s has too little power left.',
