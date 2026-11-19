@@ -480,7 +480,7 @@ class SheetMode(Mode):
                 (w('armour_class'), str(c.ac())),
                 ('To hit', '%+d' % hit),
                 ('Damage', add_bonus(c.damage_dice(), 0 if weapon.get('range')
-                                     else bonus(c.st))),
+                                     else c.damage_bonus())),
                 ('Attacks', str(c.attacks())),
                 ('Condition', w(c.status))]
         if weapon.get('ammo'):
@@ -501,6 +501,14 @@ class SheetMode(Mode):
                 sp = SPELLS[sid]
                 s.text(sx, y, '%s' % sp['name'], txt)
                 s.text(sx + 120, y, '%d' % sp['sp'], dim, align='right')
+                y += font.LINE
+        if c.traits:
+            y += 4
+            s.text(sx, y, w('Traits'), gold)
+            y += font.LINE + 2
+            from .rules import TRAITS
+            for t in c.traits:
+                s.text(sx, y, TRAITS.get(t, {}).get('name', t), txt)
                 y += font.LINE
         # equipment and pack
         ex = x0 + 340

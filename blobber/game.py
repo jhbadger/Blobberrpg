@@ -540,6 +540,11 @@ class Game:
             for k in rules.STATS:
                 if k in spec:
                     setattr(c, k, spec[k])
+            for k in ('powers', 'traits'):
+                if k in spec:
+                    setattr(c, k, list(spec[k]))
+            if rules.HOOKS['start_hp']:
+                c.maxhp = rules.HOOKS['start_hp'](c, self.rng)
             c.maxhp = c.hp = max(c.maxhp, spec.get('hp', 0))
             c.maxsp = c.sp_for_level(1)
             c.sp = c.maxsp
@@ -572,7 +577,24 @@ class Game:
         r = L.theme.get('ambient', 1.25)
         if self.st.light_turns > 0:
             r = max(r, self.st.light_r)
+        for c in self.party:
+            if c.able and c.trait('sight'):
+                r = max(r, c.trait('sight'))
         return r
+
+    def award_xp(self, amount, lines=None):
+        """Experience shared among the living (for treasure, say)."""
+        alive = [c for c in self.party if c.alive]
+        if amount <= 0 or not alive:
+            return
+        share = amount // len(alive)
+        for c in alive:
+            c.xp += share
+        text = 'Each of you gains %d experience.' % share
+        if lines is not None:
+            lines.append(text)
+        else:
+            self.say(text)
 
     def look_at(self, X, Y):
         L = self.level
@@ -1179,6 +1201,11 @@ class Game:
             for c in self.party:
                 if c.alive and c.sp < c.maxsp and c.status != 'paralyzed':
                     c.sp += 1
+        if st.steps % 4 == 0:
+            for c in self.party:
+                regen = c.trait('regen')
+                if regen and c.alive and c.hp < c.maxhp:
+                    c.hp = min(c.maxhp, c.hp + regen)
         if st.steps % 5 == 0:
             for i, c in enumerate(self.party):
                 if c.status == 'poisoned':
@@ -1212,6 +1239,8 @@ class Game:
         if sq.get('spin'):
             st.facing = self.rng.randrange(4)
             self.mark_seen()
+        if sq.get('rad'):
+            steps.append(lambda nxt: self.ev_radiation(sq, nxt))
         if sq.get('trap'):
             steps.append(lambda nxt: self.ev_trap(sq, nxt))
         if sq.get('msg'):
@@ -1262,6 +1291,8 @@ class Game:
             nxt()
             return
         self.set_flag(key)
+        if sq.get('flag') and not sq.get('fight'):
+            self.set_flag(sq['flag'])       # something learned by reading
         self.tell(sq['msg'], nxt, title=sq.get('title', ''))
 
     def ev_teleport(self, sq, nxt):
@@ -1290,7 +1321,7 @@ class Game:
             if not c.alive:
                 continue
             dmg = roll(t.get('dmg', '1d6'), self.rng)
-            if self.rng.randint(1, 20) <= c.dx:
+            if rules.save(c, 'trap', self.rng):
                 dmg //= 2
             if dmg <= 0:
                 continue
@@ -1307,6 +1338,46 @@ class Game:
         if self.check_wipe():
             return
         self.tell('\n'.join(lines), nxt)
+
+    def ev_radiation(self, sq, nxt):
+        """A square hot with radiation: each of the living saves, and
+        takes the radiation class in d6s (half on a save)."""
+        cls = sq['rad']
+        lines = []
+        for i, c in enumerate(self.party):
+            if not c.alive or c.trait('rad_immune'):
+                continue
+            dmg = roll('%dd6' % cls, self.rng)
+            if rules.save(c, 'radiation', self.rng):
+                dmg //= 2
+            else:
+                c.radfail += 1
+            if dmg <= 0:
+                continue
+            c.hp -= dmg
+            self.hurt_flash(i)
+            if c.hp <= 0:
+                c.hp = 0
+                c.status = 'dead'
+                lines.append(w('rad_kills', c.name))
+            else:
+                lines.append(w('rad_hurt', c.name, dmg))
+                if c.radfail >= 5 and rules.HOOKS['on_radiation']:
+                    c.radfail = 0
+                    note = rules.HOOKS['on_radiation'](self, c)
+                    if note:
+                        lines.append(note)
+        self.flash('#80ff40', 0.3)
+        self.sound.play('trap')
+        for l in lines:
+            self.say(l, INK_HI)
+        if self.check_wipe():
+            return
+        if lines and sq.get('rad_msg') and not self.flag(self.sqkey(what=':rad')):
+            self.set_flag(self.sqkey(what=':rad'))
+            self.tell(sq['rad_msg'] + '\n\n' + '\n'.join(lines), nxt)
+            return
+        nxt()
 
     def ev_item(self, sq, nxt):
         iid = sq['item']
@@ -1378,6 +1449,7 @@ class Game:
             if gold:
                 self.st.gold += gold
                 lines.append(w('chest_money', gold))
+                self.award_xp(int(gold * rules.GOLD_XP), lines)
             for iid in ch.get('items', []):
                 who = self.give_party(iid)
                 if who:
@@ -1437,7 +1509,7 @@ class Game:
         if kind == 'poison':
             self.say('A cloud of green gas bursts from the chest!', INK_HI)
             for i, c in enumerate(self.party):
-                if c.alive and self.rng.randint(1, 20) > c.lk:
+                if c.alive and not rules.save(c, 'poison', self.rng):
                     c.status = 'poisoned'
                     self.hurt_flash(i)
                     self.say(w('is_poisoned', c.name), INK_HI)

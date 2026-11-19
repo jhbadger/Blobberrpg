@@ -128,7 +128,9 @@ def create(g, back, view, name):
               on_cancel=back, view=view, place=name)
 
     def rolled(c):
-        stats = '   '.join('%s %d' % (s.upper(), getattr(c, s)) for s in STATS)
+        from .rules import STAT_ABBR
+        stats = '   '.join('%s %d' % (STAT_ABBR.get(s, s.upper()),
+                                     getattr(c, s)) for s in STATS)
         text = ('%s the %s %s\n\n%s\n\nHit points %d   %s %d'
                 % (c.name, c.race, c.cls, stats, c.maxhp, w('Points'),
                    c.maxsp))

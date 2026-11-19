@@ -7,8 +7,9 @@ beside it and the party's roster below. It's written in Python and Tk
 with nothing to install. Everything is drawn in code, sound and music
 included, so there are no image or sound files.
 
-There are two games so far, a sword-and-sorcery dungeon crawl and a
-far-future boarding action:
+There are three games so far: a sword-and-sorcery dungeon crawl, a
+far-future boarding action, and a trek across a post-apocalyptic
+wasteland:
 
 ```bash
 ./ashencrypt
@@ -16,6 +17,10 @@ far-future boarding action:
 
 ```bash
 ./benediction
+```
+
+```bash
+./dustwater
 ```
 
 If Python reports `No module named '_tkinter'`, install your Python's Tk
@@ -94,6 +99,57 @@ Heart.
 It's entirely the engine with the game's own words, rules, art and music.
 The engine itself wasn't forked to make it.
 
+## Dustwater
+
+A hundred and some years after the bombs, the village of Dustwater lives
+on what its old purifier can pull out of one bitter well, and the
+purifier is failing. A band of the village's misfits (pure humans,
+mutants, a walking plant and an android) set out across the wastes for
+a new filter core, from the waterworks under the ruined city of Carvel,
+and a fresh fusion cell, from the sealed military bunker the old maps
+call Facility Nine.
+
+The rules follow the *Mutant Future* role-playing game:
+
+- **Stocks, not classes**: Pure Human, Mutant Human, Mutant Animal,
+  Mutant Plant and Android. A character's role (Brawler, Gunner, Tinker,
+  Scout) is only what they're good at.
+- **Hit points** are as many dice as Constitution: d8s for a pure human,
+  d6s for anyone else, and fifty for an android. Levels don't add hit
+  points; each brings one random gain instead (+1 damage, +1 to hit, or
+  a point of an ability), as in *Mutant Future*.
+- *Mutant Future*'s **ability bonuses**, **armour classes** (9 is
+  unarmoured), **attack table** and **saving throws** (energy, poison,
+  stun and radiation, by level).
+- **Mutations** are either powers, which use focus (Willpower and level):
+  Energy Ray, Mental Blast, Fear Generation, Empathic Healing, Force
+  Screen, Spore Cloud, Thorn Volley, Teleport and more. Or they are
+  traits that just work: Natural Armour, Quickness, Night Vision,
+  Regeneration, Bark Skin, Mental Barrier and others. Mutants rolled up
+  at the Elder's hut get theirs at random, by stock.
+- **Radiation**: glowing ground burns everyone who walks on it (half on
+  a save). A mutant who fails five saves gains a new mutation. Pure
+  humans only burn, and androids don't even notice.
+
+The world:
+
+- **Dustwater** is a ring of scrap shacks round the purifier. The Elder
+  recognises experience and takes on volunteers, Hagen's Trading Post
+  sells pipe guns to laser pistols, Mother Bryony heals, the Bunkhouse
+  rests and saves, and Mags gives hints.
+- **The Wastes** lie between the sites: a big outdoor map of dunes,
+  rocks, a broken road, Kingpin Rusk's raider camp, a nomad's spring and
+  a patch of glowing ground with an army cache in the middle of it.
+- **The Ruins of Carvel**, an outdoor maze of burned towers with an ant
+  nest, an old hermit, and a dead soldier still holding his orders. Under
+  it are **the Waterworks**, where Old Snapper sits on the spare filters.
+- **Facility Nine**: the keycard opens its hatch, and the soldier's
+  password opens the lower level, where Guardian Unit Nine still guards
+  the reactor.
+- **People to talk to**: Sef the nomad in the wastes, Old Grue in
+  Carvel, and K-7, the bunker's maintenance robot.
+- An optional **seed bank** in the bunker changes the ending.
+
 ### Keys
 
 | Key | |
@@ -143,9 +199,9 @@ a Kivy front end (`blobber/kivyshell.py`), since Android has no Tk.
 
 ### On Android
 
-The games run in Pydroid 3 like the tilerpgs: open `ashencrypt` or
-`benediction` (with the `blobber` folder, and for Benediction
-`benediction_art.py`, beside it) and press Run. Pydroid only opens a
+The games run in Pydroid 3 like the tilerpgs: open `ashencrypt`,
+`benediction` or `dustwater` (with the `blobber` folder, and the game's
+own `_art.py` module, beside it) and press Run. Pydroid only opens a
 window for a script that imports `tkinter` itself, which is why each game
 script does. For sound, install `pyjnius` (Android's own player) or
 `pygame` (SDL's mixer) from Pydroid's pip; without either the game is
@@ -163,7 +219,7 @@ hand; anyone with a bow or crossbow can shoot from any rank, using up the
 party's arrows (the Armoury sells more).
 
 Each game saves itself to `~/.<game>.json` (`~/.ashencrypt.json`,
-`~/.benediction.json`) whenever you change level, rest at the inn or
+`~/.benediction.json`, `~/.dustwater.json`) whenever you change level, rest at the inn or
 barracks, or quit; Continue on the title screen picks up from there. The
 game menu (Esc) also saves in and loads from six slots, at any time
 outside a fight, and the title screen can load them too.
@@ -210,9 +266,10 @@ wall is a few cached byte copies, so a step takes about a millisecond.
 
 A game is a script that defines a handful of names and calls
 `blobber.run()`. See `ashencrypt` for a complete one. `benediction` shows a
-game that replaces the whole fantasy ruleset. Both keep their own art in
-a module beside the script (`ashencrypt_art.py`, `benediction_art.py`),
-which the app builders pack along with it.
+game that replaces the whole fantasy ruleset, and `dustwater` one that
+changes how characters work. Each keeps its own art in a module beside
+the script (`ashencrypt_art.py`, `benediction_art.py`,
+`dustwater_art.py`), which the app builders pack along with it.
 
 - `ID`, `TITLE`, `SUBTITLE`, `TITLE_ART`, `ICON` (a picture), `INTRO`
   (pages), `WELCOME`, `DEATH`
@@ -253,6 +310,25 @@ a few fields make them fit other settings:
   damage to a tag, `immune` for tags a sleep spell can't touch
 - `rules.UNLIVING`: tags whose monsters are "destroyed" rather than killed
 
+A game whose rules work differently can go further (`dustwater` does all
+of this to follow *Mutant Future*):
+
+- `rules.BONUS_TABLE`, a list giving the bonus for each ability score;
+  `rules.BASE_AC`, the armour class of someone with no armour; and
+  `rules.GOLD_XP`, experience for each piece of gold found
+- `rules.STAT_NAMES` and `rules.STAT_ABBR`, to rename the five abilities
+- a class's `atk_table`: its attack bonus at each level
+- a monster's `atk`: its attack bonus, if not its level plus one
+- `rules.TRAITS`: passive traits a character can have (`ac`, `hit`,
+  `dmg`, `attacks`, `regen`, `sight` and immunities to poison, radiation
+  and stunning). A character's `traits` list names theirs, and its
+  `powers` list names spells of their own, whatever their class.
+- `rules.HOOKS`: functions that replace parts of the stock rules: how a
+  new character is made (`new_character`, `start_hp`), what a level
+  brings (`level_up`), spell points (`sp`), saving throws (`save`), and
+  what happens when radiation gets the better of someone
+  (`on_radiation`)
+
 ### Words
 
 Everything the engine itself says, from "gold" and "spell points" to "Cast
@@ -280,9 +356,9 @@ A legend entry is a dict. The keys, all documented in `world.py`, include
 `solid`, `wall`, `floor`, `ceil`, `sprite`, `door` (`True` or
 `'locked'`) with `key`, `secret`, `riddle`, `goto` (stairs and portals),
 `msg`, `fight`, `chest`, `item`, `fountain`, `trap`, `spin`, `teleport`,
-`dark`, `antimagic`, `shop`, `hook`, `talk` with `block` (someone standing
-there; see `blobber/talk.py`), `requires` and `unless` (switch a square on
-or off by a flag).
+`dark`, `antimagic`, `rad` (radiation), `shop`, `hook`, `talk` with
+`block` (someone standing there; see `blobber/talk.py`), `requires` and
+`unless` (switch a square on or off by a flag).
 
 A spell or item can name the `colour` it washes the view with when it's
 used; otherwise the colour follows what it does (fire orange, healing

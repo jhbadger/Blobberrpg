@@ -21,6 +21,7 @@ DEFAULTS = {
     # magic
     'magic':        'spell',            # "No one can cast a spell now."
     'Magic':        'Spells',           # heading on the character sheet
+    'Traits':       'Traits',           # passive ones, on the sheet
     'points':       'spell points',
     'Points':       'Spell points',
     'pts':          'Spell Pts',        # roster heading
@@ -69,6 +70,8 @@ DEFAULTS = {
     'poison_kills': '%s succumbs to poison!',
     'drained':      '%s feels a level of life drain away!',
     'is_cured':     '%s is cured.',
+    'rad_hurt':     'Radiation burns %s for %d.',
+    'rad_kills':    '%s dies of radiation!',
     # light
     'light_out':    'Your light flickers and goes out.',
     'too_bright':   "It's bright enough out here.",

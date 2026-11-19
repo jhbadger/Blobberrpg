@@ -47,14 +47,68 @@ def dice_max(expr):
         int((m.group(3) or '0').replace(' ', ''))
 
 
+# The bonus each ability score gives, if a game's rules have a table of
+# their own (a list indexed by the score); None for the stock formula.
+BONUS_TABLE = None
+
+
 def bonus(stat):
     """The bonus a stat from 3 to 18 gives: -2 to +3."""
+    if BONUS_TABLE:
+        return BONUS_TABLE[max(0, min(len(BONUS_TABLE) - 1, stat))]
     return max(-2, min(3, (stat - 10) // 2 - (1 if stat < 10 else 0)))
 
 
 STATS = ('st', 'iq', 'dx', 'cn', 'lk')
 STAT_NAMES = {'st': 'Strength', 'iq': 'Intellect', 'dx': 'Dexterity',
               'cn': 'Constitution', 'lk': 'Luck'}
+STAT_ABBR = {'st': 'ST', 'iq': 'IQ', 'dx': 'DX', 'cn': 'CN', 'lk': 'LK'}
+
+# Armour class with no armour and an average Dexterity.
+BASE_AC = 10
+
+# Experience for treasure: this many experience points for each gold piece
+# the party finds (shared among the living), as in the old games.
+GOLD_XP = 0
+
+# Ways a game can change how characters work.  Each is None (the stock
+# rules) or a function:
+#   new_character(c, rng)   after the abilities are rolled (mutations...)
+#   start_hp(c, rng)        a new character's hit points
+#   level_up(c, rng)        a new level's gains, after c.level has gone up;
+#                           returns notes to show (replaces the stock gains)
+#   sp(c, level)            spell (power) points at a level
+#   save(c, kind, rng)      a saving throw: True if it succeeds.  kinds:
+#                           'breath', 'paralyze', 'poison', 'radiation',
+#                           'trap'
+#   on_radiation(g, c)      when radiation has got the better of someone
+HOOKS = dict(new_character=None, start_hp=None, level_up=None, sp=None,
+             save=None, on_radiation=None)
+
+# Passive traits (mutations, implants...) a character can have, by name:
+#   ac, hit, dmg, attacks   bonuses to armour, to hit, to melee damage and
+#                           to attacks a round
+#   regen                   hit points back every few steps
+#   sight                   sees this far in the dark (the party's light is
+#                           at least this while they can act)
+#   poison_immune, rad_immune, stun_immune
+#   text                    what it is, for the character sheet
+TRAITS = {}
+
+
+def save(c, kind, rng=random):
+    """A saving throw against something; True if it succeeds."""
+    if kind == 'poison' and c.trait('poison_immune'):
+        return True
+    if kind == 'radiation' and c.trait('rad_immune'):
+        return True
+    if kind == 'paralyze' and c.trait('stun_immune'):
+        return True
+    if HOOKS['save']:
+        return HOOKS['save'](c, kind, rng)
+    stat = {'breath': c.dx, 'trap': c.dx, 'paralyze': c.lk, 'poison': 0,
+            'radiation': c.cn}.get(kind, 0)
+    return rng.randint(1, 20) <= stat
 
 # ------------------------------------------------------------ races, classes
 
@@ -373,6 +427,10 @@ class Character:
         self.status = 'ok'      # ok poisoned paralyzed asleep dead stoned
         self.equip = {s: None for s in SLOTS}
         self.pack = []
+        self.powers = []        # spells of their own (mutations...)
+        self.traits = []        # passive traits, from TRAITS
+        self.extra = {}         # bonuses won by levelling: hit, dmg ...
+        self.radfail = 0        # radiation saves failed
 
     # Saving.
 
@@ -387,6 +445,17 @@ class Character:
             c.equip.setdefault(s, None)
         return c
 
+    def trait(self, key):
+        """The sum of a trait value over this character's traits and
+        level bonuses (True/False for the flags)."""
+        total = self.extra.get(key, 0)
+        for t in self.traits:
+            v = TRAITS.get(t, {}).get(key, 0)
+            if v is True:
+                return True
+            total += v or 0
+        return total
+
     # Making one.
 
     @classmethod
@@ -400,13 +469,21 @@ class Character:
         for s in STATS:
             v = sum(sorted(rng.randint(1, 6) for _ in range(4))[1:])
             setattr(self, s, max(3, min(18, v + mods.get(s, 0))))
+        self.powers, self.traits, self.extra = [], [], {}
+        if HOOKS['new_character']:
+            HOOKS['new_character'](self, rng)
         c = CLASSES[self.cls]
-        self.maxhp = max(4, c['hd'] + bonus(self.cn) * 2)
+        if HOOKS['start_hp']:
+            self.maxhp = HOOKS['start_hp'](self, rng)
+        else:
+            self.maxhp = max(4, c['hd'] + bonus(self.cn) * 2)
         self.hp = self.maxhp
         self.maxsp = self.sp_for_level(1)
         self.sp = self.maxsp
 
     def sp_for_level(self, level):
+        if HOOKS['sp']:
+            return HOOKS['sp'](self, level)
         c = CLASSES[self.cls]
         if not c.get('magic'):
             return 0
@@ -427,7 +504,7 @@ class Character:
         return ITEMS.get(iid) if iid else None
 
     def ac(self, extra=0):
-        a = 10 - bonus(self.dx)
+        a = BASE_AC - bonus(self.dx) - self.trait('ac')
         for s in SLOTS:
             it = self.item(s)
             if it:
@@ -437,8 +514,15 @@ class Character:
     def to_hit(self):
         c = CLASSES[self.cls]
         w = self.item('weapon')
-        return int(self.level * c['atk']) + bonus(self.st) + \
+        table = c.get('atk_table')
+        base = table[min(self.level, len(table)) - 1] if table else \
+            int(self.level * c['atk'])
+        return base + bonus(self.st) + self.trait('hit') + \
             (w.get('hit', 0) if w else 0)
+
+    def damage_bonus(self):
+        """What's added to the damage of a hand-to-hand blow."""
+        return bonus(self.st) + self.trait('dmg')
 
     def damage_dice(self):
         w = self.item('weapon')
@@ -447,7 +531,8 @@ class Character:
     def attacks(self):
         c = CLASSES[self.cls]
         every = c.get('every', 0)
-        return 1 + (self.level // every if every else 0)
+        return 1 + (self.level // every if every else 0) + \
+            self.trait('attacks')
 
     @property
     def alive(self):
@@ -459,7 +544,8 @@ class Character:
         return self.status in ('ok', 'poisoned')
 
     def spells(self):
-        return known_spells(self.cls, self.level)
+        return known_spells(self.cls, self.level) + \
+            [p for p in self.powers if p in SPELLS]
 
     def can_level(self):
         return self.level < MAX_LEVEL and self.xp >= xp_for(self.level + 1)
@@ -468,6 +554,12 @@ class Character:
         """Raise one level; returns a description of the gains."""
         c = CLASSES[self.cls]
         self.level += 1
+        if HOOKS['level_up']:
+            old = self.maxsp
+            notes = HOOKS['level_up'](self, rng) or []
+            self.maxsp = self.sp_for_level(self.level)
+            self.sp += max(0, self.maxsp - old)
+            return notes
         gain = max(1, rng.randint(1, c['hd']) + bonus(self.cn))
         self.maxhp += gain
         self.hp += gain

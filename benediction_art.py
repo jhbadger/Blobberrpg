@@ -7,7 +7,8 @@ import math
 import random
 
 from blobber import textures as tx
-from blobber.textures import texture, T, fbm, overlay, glow_at
+from blobber.textures import (texture, T, fbm, overlay, glow_at,
+                              plates, stripes, light_strip)
 from blobber.art import picture, eye, skull, person, standing
 from blobber.paint import Painter
 from blobber.gfx import rgb, mix, scale
@@ -40,80 +41,6 @@ def P(seed=1):
 
 
 # ------------------------------------------------------------ metal walls
-
-def plates(seed, base, seam, cols=(32, 32), rows=(28, 36), grime=0.3,
-           rust=None, rivets=True, jitter=0.08):
-    """Riveted metal plates."""
-    rng = random.Random(seed)
-    n = fbm(rng)
-    base, seam = rgb(base), rgb(seam)
-    xs = [0]
-    for c in cols:
-        xs.append(xs[-1] + c)
-    ys = [0]
-    for r in rows:
-        ys.append(ys[-1] + r)
-    tint = {}
-    px = []
-    for y in range(T):
-        j = max(i for i in range(len(rows)) if ys[i] <= y)
-        ly, hy = y - ys[j], ys[j + 1] - 1 - y
-        for x in range(T):
-            i = max(k for k in range(len(cols)) if xs[k] <= x)
-            lx, hx = x - xs[i], xs[i + 1] - 1 - x
-            f = tint.get((i, j))
-            if f is None:
-                f = tint[(i, j)] = 1 + (rng.random() - 0.5) * 2 * jitter
-            v = n[y * T + x]
-            if lx == 0 or ly == 0:
-                c = seam
-            else:
-                f2 = f * (1 - grime / 2 + grime * v)
-                if lx == 1 or ly == 1:
-                    f2 *= 1.25
-                elif hx == 0 or hy == 0:
-                    f2 *= 0.7
-                c = scale(base, f2)
-            px.append(c)
-    if rivets:
-        for j in range(len(rows)):
-            for i in range(len(cols)):
-                for (rx, ry) in ((xs[i] + 3, ys[j] + 3), (xs[i + 1] - 4, ys[j] + 3),
-                                 (xs[i] + 3, ys[j + 1] - 4),
-                                 (xs[i + 1] - 4, ys[j + 1] - 4)):
-                    if 0 <= rx < T - 1 and 0 <= ry < T - 1:
-                        px[ry * T + rx] = scale(base, 1.6)
-                        px[(ry + 1) * T + rx + 1] = scale(base, 0.45)
-                        if rust and rng.random() < 0.6:
-                            ln = rng.randint(4, 18)
-                            for k in range(2, ln):
-                                yy = ry + k
-                                if yy < T:
-                                    q = yy * T + rx
-                                    px[q] = mix(px[q], rust, 0.55 * (1 - k / ln))
-    if rust:
-        rr = random.Random(seed + 9)
-        n2 = fbm(rr, ((8, 0.5), (32, 0.5)))
-        for i in range(T * T):
-            if n2[i] > 0.68:
-                px[i] = mix(px[i], rust, min(0.7, (n2[i] - 0.68) * 4))
-    return px
-
-
-def stripes(px, y0, y1, a='#d8b020', b='#141414', w=6):
-    a, b = rgb(a), rgb(b)
-    for y in range(y0, y1):
-        for x in range(T):
-            px[y * T + x] = a if ((x + y) // w) % 2 == 0 else b
-    return px
-
-
-def light_strip(px, y, colour, x0=4, x1=60):
-    for x in range(x0, x1):
-        px[y * T + x] = rgb(colour)
-        px[(y + 1) * T + x] = scale(colour, 0.7)
-    glow_at(px, 32, y, 30, colour, 0.12)
-
 
 # -------------------------------------------------------- the Unbending Vow
 

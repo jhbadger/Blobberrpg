@@ -1,0 +1,1465 @@
+#!/usr/bin/env python3
+"""Dustwater: a third game for the Blobber engine, after the rules of
+Mutant Future.
+
+A hundred and some years after the bombs, the village of Dustwater lives
+on what its old purifier can pull out of one bitter well.  The purifier
+is failing: its filter core is clogged, its fusion cell nearly flat.  A
+band of the village's misfits (pure humans, mutants, a plant and an
+android) go out into the wastes to find replacements: a filter core in
+the waterworks under the ruins of Carvel, and a fusion cell in the
+sealed military bunker the old maps call Facility Nine.
+
+The rules follow Mutant Future: hit points rolled as dice equal to
+Constitution, the Mutant Future ability bonuses and saving throws, no
+classes (each character's role is only what they're good at), levels
+that bring a random gain rather than more hit points, mutations that
+work as powers or passive traits, and radiation that can give a mutant a
+new one.
+
+Run it with ./dustwater (Python 3 with Tk, nothing else).  The game is
+saved to ~/.dustwater.json.  ./dustwater --selftest checks the maps, and
+--balance plays its fights with a simulated player.
+"""
+
+import os
+import sys
+
+# Pydroid starts a script as a Tk app only if the script itself
+# imports tkinter; the engine importing it is not enough.
+try:
+    import tkinter                                     # noqa: F401
+except ImportError:
+    pass
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+import blobber                                         # noqa: E402
+from blobber import rules                              # noqa: E402
+from blobber.rules import roll                         # noqa: E402
+import dustwater_art                                   # noqa: E402,F401
+
+ID = 'dustwater'
+TITLE = 'Dustwater'
+SUBTITLE = 'The well is failing. The wastes are waiting.'
+TITLE_ART = 'dw_title'
+ICON = 'dw_icon'
+
+INTRO = [
+    "It has been a hundred and some years since the bombs. Nobody counts "
+    "any more. The village of Dustwater is forty souls and a ring of "
+    "scrap around one bitter well, and an old machine that makes the "
+    "water fit to drink: the purifier.",
+
+    "This spring the purifier began to cough. Mags, who knows machines, "
+    "opened it up and shook her head: the filter core is clogged solid, "
+    "and the fusion cell that drives it is nearly flat. Without them the "
+    "water will turn the village sick before the summer is out.",
+
+    "There are no spares in Dustwater. But the old maps show a waterworks "
+    "under the ruins of CARVEL, north-east across the wastes, and a sealed "
+    "military bunker, FACILITY NINE, to the south-east. The Elder has "
+    "asked for volunteers, and got you: the ones the village can spare.\n\n"
+    "Find a filter core and a fusion cell, and bring them home to the "
+    "purifier.",
+]
+WELCOME = "Dustwater. The purifier coughs in the square, and the gate " \
+          "east opens onto the wastes."
+DEATH = "The wastes have taken you, as they take most. In Dustwater the " \
+        "purifier coughs, and stops."
+
+GOLD = 120
+SUPPLIES = {'rounds': 60, 'bolts': 40}
+START = ('village', 6, 6, 0)
+
+CHROME = dict(background='rockface', bg_shade=0.7, frame='scrapwall',
+              bevel=('#b8a080', '#1a120c'), moss=False,
+              ornament='dw_ornament', paper=('#ddc9a0', '#7a6040'),
+              roller=('#4a3a2a', '#b89a70'))
+
+WORDS = {
+    'continue': 'Go on with the journey',
+    'new_game': 'Set out anew',
+    'money': 'scrap',
+    'found_money': 'You scavenge %d scrap.',
+    'chest_money': 'Inside is %d scrap.',
+    'magic': 'mutation', 'Magic': 'Mutations', 'Traits': 'Mutant traits',
+    'points': 'focus', 'Points': 'Focus', 'pts': 'Focus', 'sp': 'FO',
+    'cast': 'Use a mutation', 'casts': 'uses', 'cast_short': 'Mutate',
+    'who_casts': 'Who uses a mutation?',
+    'none_cast': 'No one can use a mutation now.',
+    'too_few': '%s is too worn out to do that.',
+    'fizzle': 'Something here dulls the mind; the mutation will not come.',
+    'fizzle_fight': 'The mutation fails.',
+    'help_cast': 'use a mutation',
+    'race': 'Stock', 'race_pick': 'Choose a stock',
+    'class': 'Role', 'class_pick': 'Choose a role',
+    'armour_class': 'Armour',
+    'new_hero': 'A new volunteer',
+    'name_hero': 'Name this new volunteer from the village:',
+    'breath': 'spews something foul!',
+    'shoots': 'shoots at',
+    'shot_miss': '%s shoots at %s and misses.',
+    'can_train': '%s has grown in experience: see the Elder.',
+    'trainable': 'Experienced',
+    'poisoned': 'Poisoned', 'paralyzed': 'Stunned', 'asleep': 'Cowering',
+    'dead': 'Dead', 'stoned': 'Petrified',
+    'is_paralyzed': '%s is stunned!',
+    'drained': '%s feels their strength drain away!',
+    'is_cured': '%s is cured.',
+    'light_out': 'Your glow stick fades out.',
+    'too_bright': "There's light enough out here.",
+    'rad_hurt': 'Radiation burns %s for %d.',
+    'rad_kills': '%s dies of radiation sickness!',
+    'guild': 'the Elder', 'Guild': "The Elder's Hut",
+    'g_train': 'Be recognised for your deeds',
+    'g_add': 'Call a volunteer from the village',
+    'g_remove': 'Send someone home to rest',
+    'g_create': 'Take on a new volunteer',
+    'g_order': 'Change the order of march',
+    'g_retire': 'Let someone go for good',
+    'training': 'Experience',
+    'shop': 'The Trading Post', 'temple': "Bryony's Tent",
+    'inn': 'The Bunkhouse', 'sage': "Mags's Workshop",
+    'heal_wounds': 'Tend wounds', 'raise': 'Bring back',
+    'healed': 'Mother Bryony smears her green poultices on your wounds.',
+    'rest': 'Sleep',
+    'rested': 'You sleep in the bunkhouse. Wounds and focus are restored, '
+              'and the game is saved.',
+    'morning': 'The sun comes up red over the wastes.',
+    'counsel': 'Ask for advice',
+    'lore': 'Ask about the old world',
+}
+
+# ------------------------------------------------------------- the rules
+#
+# Mutant Future, as far as a blobber can follow it.  Lucky for the engine's
+# 'lk' is Willpower; 'iq' is Intelligence.  Charisma is left out, since
+# the party never needs to haggle.
+
+rules.STAT_NAMES.update(st='Strength', iq='Intelligence', dx='Dexterity',
+                        cn='Constitution', lk='Willpower')
+rules.STAT_ABBR.update(st='STR', iq='INT', dx='DEX', cn='CON', lk='WIL')
+
+# Mutant Future's ability bonuses: 3 is -3, 4-5 -2, 6-8 -1, 9-12 none,
+# 13-15 +1, 16-17 +2, 18-19 +3, 20 and up +4.
+rules.BONUS_TABLE = ([-3] * 4 + [-2] * 2 + [-1] * 3 + [0] * 4 + [1] * 3 +
+                     [2] * 2 + [3] * 2 + [4] * 2)
+rules.BASE_AC = 9
+rules.GOLD_XP = 1
+
+rules.RACES.clear()
+rules.RACES.update({
+    'Pure Human':    dict(st=0, iq=1, dx=0, cn=1, lk=0,
+                          text='Unmutated, and proud of it: d8s for hit '
+                               'points, and old-world machines trust them. '
+                               'Radiation only hurts them.'),
+    'Mutant Human':  dict(st=0, iq=0, dx=0, cn=0, lk=0,
+                          text='Human, more or less, with a mutant trait '
+                               'and two mutant powers. Radiation may bring '
+                               'more.'),
+    'Mutant Animal': dict(st=2, iq=-2, dx=0, cn=1, lk=0,
+                          text='A beast grown wise and upright: two '
+                             'mutant traits and a power of the mind.'),
+    'Mutant Plant':  dict(st=0, iq=-1, dx=-2, cn=2, lk=1,
+                          text='A walking plant: bark or leaves to live by, '
+                               'thorns or spores to fight with, and a '
+                               'power of the mind.'),
+    'Android':       dict(st=1, iq=2, dx=0, cn=0, lk=-3,
+                          text='A machine in a man\'s shape, left over from '
+                               'the old world: fifty hit points, and immune '
+                               'to poison and radiation. Androids do not '
+                               'mutate.'),
+})
+
+# Mutant Future has no classes, so these are only roles: what each one is
+# good at.  The attack bonus follows the Mutant Future attack table.
+FIGHTER = [1, 2, 2, 3, 4, 4, 5, 6, 6, 7, 8, 8, 9]
+OTHER = [0, 1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8]
+rules.CLASSES.clear()
+rules.CLASSES.update({
+    'Brawler': dict(abbr='BR', hd=8, atk=1.0, atk_table=FIGHTER,
+                    magic=None, every=5, gear={'all'},
+                    text='Stands in front and hits things. Fights a '
+                         'little better, and strikes twice from level '
+                         'five.'),
+    'Gunner':  dict(abbr='GN', hd=8, atk=1.0, atk_table=FIGHTER,
+                    magic=None, every=0, gear={'all'},
+                    text='A shot with anything that fires, from any rank.'),
+    'Tinker':  dict(abbr='TK', hd=6, atk=0.8, atk_table=OTHER, magic=None,
+                    every=0, gear={'all'},
+                    skills={'locks', 'traps', 'search'},
+                    text='Opens locks, disarms traps on caches, and finds '
+                         'hidden ways.'),
+    'Scout':   dict(abbr='SC', hd=6, atk=0.8, atk_table=OTHER, magic=None,
+                    every=0, gear={'all'}, skills={'search', 'traps'},
+                    text='Reads the land: finds hidden ways and sees '
+                         'traps coming.'),
+})
+
+rules.XP_TABLE[:] = [0, 0, 60, 150, 300, 550, 900, 1400, 2100, 3000, 4200,
+                     5600, 7400, 9600]
+
+# Passive mutations.
+rules.TRAITS.clear()
+rules.TRAITS.update({
+    'natural_armor':  dict(name='Natural Armour', ac=3,
+                           text='Plates, scales or a hide like boot '
+                                'leather: armour +3.'),
+    'quickness':      dict(name='Quickness', attacks=1, ac=1,
+                           text='Moves twice as fast: an extra attack each '
+                                'round, and armour +1.'),
+    'thermal_vision': dict(name='Thermal Vision', sight=4.5,
+                           text='Sees heat: the dark is no darkness.'),
+    'night_vision':   dict(name='Night Vision', sight=4.0,
+                           text='Sees in the dark like a cat.'),
+    'echolocation':   dict(name='Echolocation', sight=3.5,
+                           text='Hears the shape of the dark.'),
+    'regeneration':   dict(name='Regeneration', regen=1,
+                           text='Wounds close as you walk.'),
+    'increased_str':  dict(name='Increased Strength', hit=1, dmg=2,
+                           text='+1 to hit and +2 damage hand to hand.'),
+    'increased_dex':  dict(name='Increased Balance', hit=1, ac=1,
+                           text='+1 to hit, and armour +1.'),
+    'gigantism':      dict(name='Gigantism', dmg=3, ac=-1,
+                           text='Huge: +3 damage hand to hand, but easier '
+                                'to hit.'),
+    'combat_empathy': dict(name='Combat Empathy', hit=2,
+                           text='Feels where a foe will move: +2 to hit.'),
+    'mental_barrier': dict(name='Mental Barrier', stun_immune=True,
+                           text='No mind can stun or frighten you.'),
+    'rad_resist':     dict(name='Radiation Resistance', rad_immune=True,
+                           text='Radiation does you no harm.'),
+    'toxic_blood':    dict(name='Toxic Blood', poison_immune=True,
+                           text='Poison does you no harm.'),
+    'plant_bark':     dict(name='Bark Skin', ac=2,
+                           text='Hard bark: armour +2.'),
+    'photosynthesis': dict(name='Photosynthesis', regen=1,
+                           text='Heals a little in any light.'),
+    'android_frame':  dict(name='Synthetic Frame', poison_immune=True,
+                           rad_immune=True,
+                           text='A machine body: poison and radiation do '
+                                'it no harm.'),
+})
+
+rules.SPELLS.clear()
+rules.SPELLS.update({
+    # physical mutations
+    'ERAY': dict(name='Energy Ray', school='mutation', level=1, sp=4,
+                 colour='#ffe040', target='foe', effect='damage',
+                 dice='3d6', per=1, combat=True,
+                 text='A ray of raw energy from the eyes.'),
+    'SHRK': dict(name='Sonic Blast', school='mutation', level=1, sp=5,
+                 colour='#c0e0ff', target='group', effect='damage',
+                 dice='2d6', per=1, combat=True,
+                 text='A shriek that shakes a group of foes.'),
+    'OPTE': dict(name='Optic Emissions', school='mutation', level=1, sp=3,
+                 colour='#ff5050', target='foe', effect='damage',
+                 dice='2d6', per=1, combat=True,
+                 text='Burning light from the eyes.'),
+    'GAMA': dict(name='Gamma Eye', school='mutation', level=1, sp=8,
+                 colour='#80ff40', target='foe', effect='damage',
+                 dice='5d6', per=1, combat=True,
+                 text='A glance of hard radiation.'),
+    'POIS': dict(name='Poison Spit', school='mutation', level=1, sp=3,
+                 colour='#a0e040', target='foe', effect='damage',
+                 dice='2d6+2', per=1, combat=True,
+                 text='Spits venom at a foe.'),
+    'TEMP': dict(name='Dust Storm', school='mutation', level=1, sp=9,
+                 colour='#d0a060', target='foes', effect='damage',
+                 dice='2d6', per=1, combat=True,
+                 text='Whips up a storm of grit over every foe.'),
+    'THRN': dict(name='Thorn Volley', school='mutation', level=1, sp=4,
+                 colour='#80a040', target='group', effect='damage',
+                 dice='2d4', per=1, combat=True,
+                 text='A spray of thorns over a group of foes.'),
+    'SPOR': dict(name='Spore Cloud', school='mutation', level=1, sp=5,
+                 colour='#e0e080', target='group', effect='sleep',
+                 immune=['machine'], combat=True,
+                 text='Choking spores: a group of living foes chokes and '
+                      'cowers.'),
+    # mental mutations
+    'MTHR': dict(name='Mental Blast', school='mutation', level=1, sp=4,
+                 colour='#d070ff', target='foe', effect='damage',
+                 dice='3d6', per=1, combat=True,
+                 text='A blow of pure thought.'),
+    'FSCR': dict(name='Fear Generation', school='mutation', level=1, sp=5,
+                 colour='#b050ff', target='group', effect='sleep',
+                 immune=['machine'], combat=True,
+                 text='A group of living foes cowers in terror.'),
+    'TKIN': dict(name='Telekinesis', school='mutation', level=1, sp=4,
+                 colour='#a0a0ff', target='foe', effect='damage',
+                 dice='2d8', per=1, combat=True,
+                 text='Hurls scrap at a foe with the mind.'),
+    'HEAL': dict(name='Empathic Healing', school='mutation', level=1, sp=3,
+                 colour='#70ff90', target='ally', effect='heal',
+                 dice='3d6', per=1, combat=True,
+                 text='Takes on a friend\'s wounds, and heals them.'),
+    'BADJ': dict(name='Body Adjustment', school='mutation', level=1, sp=4,
+                 colour='#a0ffe0', target='ally', effect='cure', combat=True,
+                 text='Drives out poison and stunning.'),
+    'KDIR': dict(name='Force Screen', school='mutation', level=1, sp=5,
+                 colour='#80d0ff', target='party', effect='ward', amount=2,
+                 combat=True, text='The party is harder to hit this fight.'),
+    'PREC': dict(name='Precognition', school='mutation', level=1, sp=4,
+                 colour='#ffe070', target='party', effect='bless', amount=2,
+                 combat=True,
+                 text='Sees a moment ahead: the party strikes truer this '
+                      'fight.'),
+    'LITE': dict(name='Light Generation', school='mutation', level=1, sp=2,
+                 colour='#ffffc0', target='none', effect='light', light=5.0,
+                 turns=300, combat=False,
+                 text='The body glows like a lamp.'),
+    'SENS': dict(name='Heightened Senses', school='mutation', level=1, sp=4,
+                 colour='#ffffa0', target='none', effect='sight', turns=200,
+                 combat=False, text='Notices hidden ways as you walk.'),
+    'DIRN': dict(name='Directional Sense', school='mutation', level=1, sp=3,
+                 colour='#a0a0ff', target='none', effect='locate',
+                 combat=False, text='Always knows where you are.'),
+    'TELE': dict(name='Teleport', school='mutation', level=1, sp=14,
+                 colour='#ffffff', target='none', effect='recall',
+                 combat=False, text='Carries the party home to Dustwater.'),
+    # what thrown things do
+    'GREN': dict(name='Grenade', school='item', level=9, sp=0,
+                 colour='#ffa040', target='group', effect='damage',
+                 dice='5d6', per=0, combat=True,
+                 text='An old-world grenade through a group.'),
+    'MOLO': dict(name='Molotov', school='item', level=9, sp=0,
+                 colour='#ff7020', target='group', effect='damage',
+                 dice='2d6+2', per=0, combat=True,
+                 text='Burning spirit over a group.'),
+    'EMPG': dict(name='EMP Grenade', school='item', level=9, sp=0,
+                 colour='#80c0ff', target='group', effect='smite',
+                 dice='4d8', per=0, bane='machine', combat=True,
+                 text='Fries a group of machines.'),
+})
+
+# What the different stocks may be born with, and what radiation may give.
+PHYSICAL = ['natural_armor', 'quickness', 'thermal_vision', 'night_vision',
+            'regeneration', 'increased_str', 'increased_dex', 'gigantism',
+            'rad_resist', 'toxic_blood']
+BEASTLY = PHYSICAL + ['echolocation', 'combat_empathy']
+LEAFY = ['plant_bark', 'photosynthesis', 'regeneration', 'toxic_blood']
+BODY_POWERS = ['ERAY', 'SHRK', 'OPTE', 'GAMA', 'POIS', 'TEMP']
+MIND_POWERS = ['MTHR', 'FSCR', 'TKIN', 'HEAL', 'BADJ', 'KDIR', 'PREC',
+               'LITE', 'SENS', 'DIRN', 'TELE']
+PLANT_POWERS = ['THRN', 'SPOR', 'POIS']
+
+
+def _pick(rng, pool, have, n=1):
+    left = [p for p in pool if p not in have]
+    rng.shuffle(left)
+    return left[:n]
+
+
+def new_character(c, rng):
+    """Born mutations, by stock."""
+    if c.race == 'Mutant Human':
+        c.traits = _pick(rng, PHYSICAL, [])
+        c.powers = _pick(rng, BODY_POWERS, []) + _pick(rng, MIND_POWERS, [])
+    elif c.race == 'Mutant Animal':
+        c.traits = _pick(rng, BEASTLY, [], 2)
+        c.powers = _pick(rng, MIND_POWERS, [])
+    elif c.race == 'Mutant Plant':
+        c.traits = _pick(rng, LEAFY, [])
+        c.powers = _pick(rng, PLANT_POWERS, []) + _pick(rng, MIND_POWERS, [])
+    elif c.race == 'Android':
+        c.traits = ['android_frame']
+
+
+def start_hp(c, rng):
+    """Mutant Future hit points: as many dice as Constitution, d8s for a
+    pure human, d6s for anyone else; androids are built with fifty."""
+    if c.race == 'Android':
+        return 50
+    die = 8 if c.race == 'Pure Human' else 6
+    return max(8, sum(rng.randint(1, die) for _ in range(c.cn)))
+
+
+def level_up(c, rng):
+    """Mutant Future: each new level brings one random gain, not hit
+    points."""
+    r = rng.randint(1, 100)
+    if r <= 10:
+        c.extra['dmg'] = c.extra.get('dmg', 0) + 1
+        return ['%s hits harder: +1 damage.' % c.name]
+    if r <= 20:
+        c.extra['hit'] = c.extra.get('hit', 0) + 1
+        return ['%s fights more surely: +1 to hit.' % c.name]
+    stats = ['iq', 'lk'] if c.race == 'Android' else list(rules.STATS)
+    s = rng.choice(stats)
+    setattr(c, s, getattr(c, s) + 1)
+    notes = ['%s gains a point of %s.' % (c.name, rules.STAT_NAMES[s])]
+    if s == 'cn' and c.race != 'Android':
+        gain = rng.randint(1, 8 if c.race == 'Pure Human' else 6)
+        c.maxhp += gain
+        c.hp += gain
+        notes.append('And %d more hit points.' % gain)
+    return notes
+
+
+def focus(c, level):
+    """Focus for using mutations: Willpower and level."""
+    if not c.powers:
+        return 0
+    return max(3, c.lk - 4 + 3 * (level - 1))
+
+
+# Saving throws by level: energy (blasts, traps), poison, stun, radiation.
+SAVES = [(0, (17, 14, 16, 15)), (1, (15, 12, 14, 13)), (4, (13, 10, 12, 11)),
+         (7, (9, 8, 10, 9)), (10, (7, 6, 8, 7)), (13, (5, 4, 6, 5))]
+SAVE_COL = {'breath': 0, 'trap': 0, 'poison': 1, 'paralyze': 2,
+            'radiation': 3}
+
+
+def save(c, kind, rng):
+    row = [s for lvl, s in SAVES if c.level >= lvl][-1]
+    need = row[SAVE_COL.get(kind, 0)]
+    adj = 0
+    if kind in ('poison', 'radiation'):
+        adj = rules.bonus(c.cn)
+    elif kind == 'paralyze':
+        adj = rules.bonus(c.lk)
+    elif kind in ('breath', 'trap'):
+        adj = rules.bonus(c.dx)
+    return rng.randint(1, 20) + adj >= need
+
+
+def on_radiation(g, c):
+    """Enough radiation gives a mutant a new mutation."""
+    if c.race in ('Pure Human', 'Android'):
+        return None
+    rng = g.rng
+    if c.race == 'Mutant Plant':
+        pools = [(LEAFY, 'traits'), (PLANT_POWERS + MIND_POWERS, 'powers')]
+    elif c.race == 'Mutant Animal':
+        pools = [(BEASTLY, 'traits'), (MIND_POWERS, 'powers')]
+    else:
+        pools = [(PHYSICAL, 'traits'), (BODY_POWERS + MIND_POWERS, 'powers')]
+    rng.shuffle(pools)
+    for pool, kind in pools:
+        new = _pick(rng, pool, getattr(c, kind))
+        if new:
+            getattr(c, kind).append(new[0])
+            if kind == 'powers':
+                old = c.maxsp
+                c.maxsp = c.sp_for_level(c.level)
+                c.sp += c.maxsp - old
+                name = rules.SPELLS[new[0]]['name']
+            else:
+                name = rules.TRAITS[new[0]]['name']
+            return 'The radiation twists %s: a new mutation, %s!' % (c.name,
+                                                                   name)
+    return None
+
+
+rules.HOOKS.update(new_character=new_character, start_hp=start_hp,
+                   level_up=level_up, sp=focus, save=save,
+                   on_radiation=on_radiation)
+
+# ------------------------------------------------------------ the things
+
+rules.ITEMS.clear()
+rules.ITEMS.update({
+    # weapons
+    'knife':     dict(name='Knife', kind='weapon', dmg='1d4', price=3,
+                      verb='stabs'),
+    'pipe':      dict(name='Lead Pipe', kind='weapon', dmg='1d6', price=4,
+                      verb='clubs'),
+    'spear':     dict(name='Rebar Spear', kind='weapon', dmg='1d6+1',
+                      price=8, verb='spears'),
+    'machete':   dict(name='Machete', kind='weapon', dmg='1d8', price=15,
+                      verb='hacks'),
+    'sledge':    dict(name='Sledgehammer', kind='weapon', dmg='1d10',
+                      price=30, verb='smashes'),
+    'vibro':     dict(name='Vibro Blade', kind='weapon', dmg='2d6+2', hit=2,
+                      price=400, verb='slices',
+                      text='Vibro Blade: 2d6+2, +2 to hit. It hums.'),
+    'crossbow':  dict(name='Scrap Crossbow', kind='weapon', dmg='1d6',
+                      range=40, ammo='bolts', price=20, verb='shoots'),
+    'revolver':  dict(name='Revolver', kind='weapon', dmg='1d8', range=30,
+                      ammo='rounds', price=60, verb='shoots'),
+    'shotgun':   dict(name='Shotgun', kind='weapon', dmg='2d6', range=20,
+                      ammo='shells', price=90, verb='blasts'),
+    'rifle':     dict(name='Hunting Rifle', kind='weapon', dmg='1d10', hit=1,
+                      range=60, ammo='rounds', price=120, verb='shoots'),
+    'laser':     dict(name='Laser Pistol', kind='weapon', dmg='2d6', hit=2,
+                      range=50, ammo='cells', price=350, verb='burns',
+                      text='Laser Pistol: 2d6, +2 to hit. Old-world, and '
+                           'it still works.'),
+    'flamer':    dict(name='Flamethrower', kind='weapon', dmg='2d6',
+                      colour='#ff7020', range=20, area=True, ammo='fuel',
+                      price=300, verb='sprays fire over',
+                      text='Flamethrower: 2d6 to every foe in a group, '
+                           "range 20'."),
+    # armour (Mutant Future armour classes, against a base of 9)
+    'leathers':  dict(name='Leather Jacket', kind='armor', ac=2, price=10),
+    'tyres':     dict(name='Tyre Armour', kind='armor', ac=3, price=30),
+    'scrapmail': dict(name='Scrap Mail', kind='armor', ac=4, price=70),
+    'riotgear':  dict(name='Riot Armour', kind='armor', ac=5, price=220),
+    'combat':    dict(name='Combat Armour', kind='armor', ac=6, price=600,
+                      text='Combat Armour: armour +6. Army issue, from the '
+                           'last war.'),
+    'hubcap':    dict(name='Hubcap Shield', kind='shield', ac=1, price=6),
+    'riotshield': dict(name='Riot Shield', kind='shield', ac=2, price=80),
+    'hardhat':   dict(name='Hard Hat', kind='helm', ac=1, price=8),
+    'gloves':    dict(name='Work Gloves', kind='gloves', ac=1, price=20),
+    'bottlecap': dict(name='Lucky Bottlecap', kind='ring', ac=1, price=100,
+                      text='Lucky Bottlecap: armour +1. It has never let '
+                           'anyone down.'),
+    # supplies
+    'medkit':    dict(name='Medkit', kind='potion', use='heal',
+                      amount='4d8+4', price=30, verb='uses'),
+    'antitox':   dict(name='Antitox', kind='potion', use='cure', price=20,
+                      verb='injects'),
+    'glowstick': dict(name='Glow Stick', kind='torch', use='light',
+                      light=3.5, turns=160, price=4, verb='cracks'),
+    'molotov':   dict(name='Molotov', kind='scroll', use='spell',
+                      spell='MOLO', price=15, verb='throws'),
+    'grenade':   dict(name='Grenade', kind='scroll', use='spell',
+                      spell='GREN', price=60, verb='throws'),
+    'emp':       dict(name='EMP Grenade', kind='scroll', use='spell',
+                      spell='EMPG', price=90, verb='throws'),
+    'rounds':    dict(name='Rounds (20)', kind='ammo', ammo='rounds',
+                      amount=20, price=10),
+    'shells':    dict(name='Shells (12)', kind='ammo', ammo='shells',
+                      amount=12, price=10),
+    'bolts':     dict(name='Bolts (20)', kind='ammo', ammo='bolts',
+                      amount=20, price=4),
+    'cells':     dict(name='Power Cells (10)', kind='ammo', ammo='cells',
+                      amount=10, price=30),
+    'fuel':      dict(name='Fuel (8)', kind='ammo', ammo='fuel', amount=8,
+                      price=25),
+    # the quest
+    'keycard':   dict(name='Keycard', kind='key', price=0,
+                      text='A plastic card, stamped FACILITY 9.'),
+    'filtercore': dict(name='Filter Core', kind='quest', price=0,
+                       text='A purifier filter core, still sealed in its '
+                            'wrapping.'),
+    'fusioncell': dict(name='Fusion Cell', kind='quest', price=0,
+                       text='A fusion cell, heavy and faintly warm. Its '
+                            'gauge reads full.'),
+    'seeds':     dict(name='Seed Tin', kind='quest', price=0,
+                      text='A sealed tin of old-world seeds: wheat, beans, '
+                           'apples.'),
+})
+rules.LOOT[:] = ['medkit', 'medkit', 'antitox', 'glowstick', 'molotov',
+                 'rounds']
+
+rules.UNLIVING.clear()
+rules.UNLIVING.add('machine')
+
+rules.MONSTERS.clear()
+rules.MONSTERS.update({
+    'ashrat':    dict(name='Ash Rat', plural='Ash Rats', art='rat', level=1,
+                      hp='2d8', ac=7, hits=1, dmg='1d6', xp=5, gold='0',
+                      group=(3, 8), special=['poison:5']),
+    'radbat':    dict(name='Rad Bat', plural='Rad Bats', art='bat', level=1,
+                      hp='1d8+2', ac=6, hits=1, dmg='1d6', xp=6, gold='0',
+                      group=(3, 6)),
+    'raider':    dict(name='Raider', plural='Raiders', art='raider', level=1,
+                      hp='2d8+2', ac=6, hits=1, dmg='1d8+2', xp=10,
+                      gold='2d6', group=(3, 6), range=True,
+                      shoots='fires a pipe gun at'),
+    'glowhound': dict(name='Glowhound', plural='Glowhounds',
+                      art='glowhound', level=2, hp='3d8+2', ac=7, hits=1,
+                      dmg='2d6', xp=20, gold='0', group=(2, 5),
+                      special=['breath:3d6:12'],
+                      breath_msg='coughs a cloud of glowing spittle!',
+                      breath_colour='#80ff40',
+                      breath_hurt='%s is spattered for %d.'),
+    'scorched':  dict(name='Scorched One', plural='Scorched Ones',
+                      art='scorched', level=2, hp='3d8+2', ac=7, hits=1,
+                      dmg='2d6', xp=22, gold='1d10', group=(2, 5),
+                      special=['poison:15']),
+    'sludge':    dict(name='Glow Sludge', plural='Glow Sludges', art='slime',
+                      level=2, hp='4d8', ac=9, hits=1, dmg='2d6', xp=25,
+                      gold='0', group=(1, 4), special=['poison:25']),
+    'drone':     dict(name='Gun Drone', plural='Gun Drones', art='drone',
+                      level=2, hp='3d8', ac=4, hits=1, dmg='2d6', xp=30,
+                      gold='1d6', group=(2, 4), range=True,
+                      shoots='strafes', tags=['machine']),
+    'giantant':  dict(name='Giant Ant', plural='Giant Ants', art='giantant',
+                      level=3, hp='4d8', ac=3, hits=1, dmg='2d6+2', xp=35,
+                      gold='0', group=(2, 4)),
+    'spider':    dict(name='Mutant Spider', plural='Mutant Spiders',
+                      art='spider', level=3, hp='4d8', ac=6, hits=1,
+                      dmg='2d6', xp=40, gold='0', group=(1, 3),
+                      special=['paralyze:20']),
+    'mindworm':  dict(name='Mind Worm', plural='Mind Worms', art='mindworm',
+                      level=3, hp='3d8+3', ac=8, hits=1, dmg='1d8', xp=50,
+                      gold='0', group=(1, 3), range=True,
+                      shoots='probes the mind of',
+                      special=['cast:MTHR:35', 'paralyze:15']),
+    'thornwalker': dict(name='Thornwalker', plural='Thornwalkers',
+                        art='thornwalker', level=4, hp='5d8', ac=6, hits=2,
+                        dmg='1d10', xp=60, gold='0', group=(1, 3),
+                        special=['poison:15']),
+    'secbot':    dict(name='Security Robot', plural='Security Robots',
+                      art='secbot', level=4, hp='6d8', ac=3, hits=1,
+                      dmg='2d8', xp=80, gold='2d10', group=(1, 2),
+                      range=True, shoots='fires a stun beam at',
+                      tags=['machine'], special=['paralyze:15']),
+    'rusk':      dict(name='Kingpin Rusk', plural='Kingpin Rusks',
+                      unique=True, art='raiderboss', level=4,
+                      hp='12d8+50', ac=3, acts=2, hits=2, dmg='2d8+2',
+                      xp=220, gold='6d10'),
+    'antqueen':  dict(name='Ant Queen', plural='Ant Queens', unique=True,
+                      art='giantant', level=5, hp='9d8+30', ac=3, acts=2,
+                      hits=1, dmg='3d6', xp=250, gold='0',
+                      special=['poison:20']),
+    'snapper':   dict(name='Old Snapper', plural='Old Snappers',
+                      unique=True, art='snapper', level=6, hp='14d8+60',
+                      ac=2, acts=2, hits=1, dmg='3d8', xp=450, gold='0',
+                      special=['breath:5d6:25'],
+                      breath_msg='spews a jet of scalding sewer water!',
+                      breath_colour='#90c0a0',
+                      breath_hurt='%s is scalded for %d.'),
+    'guardian':  dict(name='Guardian Unit Nine',
+                      plural='Guardian Unit Nines', unique=True,
+                      art='guardian', level=8, hp='16d10+80', ac=0, acts=2,
+                      hits=2, dmg='3d6+2', xp=1200, gold='0',
+                      tags=['machine'],
+                      special=['breath:6d6:30', 'paralyze:12'],
+                      breath_msg='sweeps the room with its laser!',
+                      breath_colour='#ff3030',
+                      breath_hurt='%s is burned for %d.'),
+})
+# A monster's attack bonus is its hit dice, as in Mutant Future.
+for _m in rules.MONSTERS.values():
+    _m.setdefault('atk', _m['level'])
+
+KITS = {
+    'Brawler': ['machete', 'tyres'],
+    'Gunner':  ['revolver', 'leathers'],
+    'Tinker':  ['crossbow', 'leathers'],
+    'Scout':   ['spear', 'leathers'],
+}
+
+PARTY = [
+    dict(name='Rook', race='Pure Human', cls='Brawler', st=16, iq=12, dx=12,
+         cn=15, lk=11, hp=60, gear=['sledge', 'tyres']),
+    dict(name='Tusk', race='Mutant Animal', cls='Brawler', st=17, iq=8,
+         dx=11, cn=16, lk=10, hp=50, traits=['natural_armor',
+                                             'increased_str'],
+         powers=[], gear=['machete', 'leathers']),
+    dict(name='Bolt', race='Android', cls='Tinker', st=14, iq=16, dx=14,
+         cn=12, lk=8, hp=50, traits=['android_frame'], powers=[],
+         gear=['pipe', 'tyres'], pack=['glowstick']),
+    dict(name='Vesper', race='Mutant Human', cls='Gunner', st=11, iq=12,
+         dx=16, cn=13, lk=13, hp=40, traits=['night_vision'],
+         powers=['ERAY', 'PREC'], gear=['revolver', 'leathers']),
+    dict(name='Sorrel', race='Mutant Plant', cls='Scout', st=12, iq=10,
+         dx=12, cn=14, lk=14, hp=44, traits=['plant_bark', 'regeneration'],
+         powers=['THRN', 'SPOR'], gear=['crossbow', 'leathers']),
+    dict(name='Quill', race='Mutant Human', cls='Scout', st=9, iq=15, dx=13,
+         cn=11, lk=17, hp=34, traits=['mental_barrier'],
+         powers=['MTHR', 'HEAL', 'FSCR', 'KDIR'], gear=['knife', 'leathers'],
+         pack=['medkit']),
+]
+
+# ------------------------------------------------------------ the music
+
+MUSIC = {
+    'title': {
+        'tempo': 100, 'bar': 8,
+        'chords': 'Am Am F E  Am Dm E Am',
+        'lead': ('triangle', 0.5, 0.09),
+        'melody': """
+            A4 - - - E4 - - -     | C5 - - - B4 - A4 -    |
+            F4 - - - A4 - C5 -    | B4 - - - - - - -      |
+            A4 - - - C5 - E5 -    | D5 - - - F4 - A4 -    |
+            G#4 - - - B4 - E4 -   | A4 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 - - - - - - -'),
+                   ('square', 0.125, 0.02, '. . F3 - . . T3 -')],
+        'drums': 'k . . . . . s .',
+    },
+    'town': {
+        'tempo': 120, 'bar': 8,
+        'chords': 'G C G D  Em C D G',
+        'lead': ('square', 0.25, 0.05),
+        'melody': """
+            B4 - - D5 - - B4 -    | C5 - - E5 - - C5 -    |
+            B4 - A4 - G4 - - -    | A4 - - - - - - -      |
+            G4 - - B4 - - E5 -    | E5 - D5 - C5 - - -    |
+            D5 - - C5 - - A4 -    | G4 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 - - F2 R2 - - F2'),
+                   ('square', 0.125, 0.02, '. T3 . F3 . T3 . F3')],
+        'drums': 'k . h . s . h .',
+    },
+    'waste': {
+        'tempo': 110, 'bar': 8,
+        'chords': 'Dm Dm C C  Bb Bb A A',
+        'lead': ('triangle', 0.5, 0.1),
+        'melody': """
+            D4 - - - - - F4 -     | E4 - - - - - - -      |
+            C4 - - - E4 - G4 -    | F4 - - - E4 - - -     |
+            D4 - - - F4 - Bb4 -   | A4 - - - - - - -      |
+            C#5 - - - A4 - - -    | E4 - - - . . . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 - - - - - - -'),
+                   ('square', 0.125, 0.015, '. . . . F3 - - -')],
+        'drums': 'k . . . . . . .',
+    },
+    'ruins': {
+        'tempo': 128, 'bar': 8,
+        'chords': 'Em Em C D  Em Em Am B',
+        'lead': ('square', 0.125, 0.05),
+        'melody': """
+            E4 - . E4 G4 - . .    | F#4 - - - D4 - - -    |
+            C4 - . E4 G4 - C5 -   | B4 - A4 - F#4 - - -   |
+            E4 - . E4 G4 - B4 -   | A4 - G4 - E4 - - -    |
+            A4 - - - C5 - - -     | B4 - - - . . . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 . R2 . R2 . R2 .')],
+        'drums': 'k . . h . . s .',
+    },
+    'dungeon': {
+        'tempo': 96, 'bar': 8,
+        'chords': 'Cm Cm Ab Ab  Fm Fm G G',
+        'lead': ('triangle', 0.5, 0.09),
+        'melody': """
+            C4 - - - . . Eb4 -    | D4 - - - . . . .      |
+            Ab4 - - - G4 - - -    | Eb4 - - - - - . .     |
+            F4 - - - Ab4 - - -    | G4 - - - F4 - Eb4 -   |
+            D4 - - - G4 - - -     | B3 - - - . . . .""",
+        'voices': [('triangle', 0.5, 0.2, 'R2 - - - - - - -'),
+                   ('square', 0.125, 0.015, '. . . T3 . . . F3')],
+        'drums': 'k . . . . . . .',
+    },
+    'bunker': {
+        'tempo': 140, 'bar': 8,
+        'chords': 'Am Am Bb Am  Am Dm E Am',
+        'lead': ('square', 0.125, 0.05),
+        'melody': """
+            A4 - . A4 - . C5 -    | B4 - . . A4 - - -     |
+            Bb4 - . Bb4 - . D5 -  | C5 - B4 - A4 - - -    |
+            E5 - . E5 - . G5 -    | F5 - E5 - D5 - - -    |
+            G#4 - - - B4 - - -    | A4 - - - . . . .""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 R2 . R2 R2 . . .'),
+                   ('square', 0.125, 0.02, '. . . . F3 - - -')],
+        'drums': 'k . . k . . s .',
+    },
+    'combat': {
+        'tempo': 290, 'bar': 8,
+        'chords': 'Dm Dm Bb C  Dm Dm Bb A',
+        'lead': ('square', 0.25, 0.06),
+        'melody': """
+            D4 D4 F4 D4 A4 D4 F4 D4  | D5 - C5 - A4 - F4 -    |
+            Bb4 - D5 - F5 - D5 -     | C5 - E5 - G5 - E5 -    |
+            D4 D4 F4 D4 A4 D4 F4 D4  | F5 - E5 - D5 - A4 -    |
+            Bb4 - A4 - G4 - F4 -     | E4 - - - C#4 - - -""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 R3 R2 R3 R2 R3 R2 R3'),
+                   ('square', 0.125, 0.025, 'T4 . F4 . T4 . F4 .')],
+        'drums': 'k h s h k k s h',
+    },
+    'victory': {
+        'tempo': 190, 'bar': 8, 'loop': False,
+        'chords': 'D G A D',
+        'lead': ('square', 0.25, 0.07),
+        'melody': """
+            A4 - D5 - F#5 - A5 -  | B5 - - - G5 - D6 -    |
+            C#6 - A5 - E5 - C#6 - | D6 - - - - - . .""",
+        'voices': [('triangle', 0.5, 0.22, 'R2 - - - R2 - - -'),
+                   ('square', 0.25, 0.03, 'T4 - F4 - T4 - F4 -')],
+        'drums': 'k . . . s . . .',
+    },
+}
+
+# ----------------------------------------------------------- the village
+
+VILLAGE = dict(
+    name='Dustwater',
+    outdoor=True,
+    music='town',
+    theme=dict(floor='dust', wall='shack_a', fog='#d8b888', light=7.5,
+               sky_top='#5a3a3a', sky_horizon='#e8b880'),
+    map=[
+        "%%%%%%%%%%%%%%%%",
+        "%#E##.#T###.#M#%",
+        "%..............%",
+        "%.##.PPP.##.##.%",
+        "%.#H.....#K..#.G",
+        "%.##..f..##..#.%",
+        "%..............%",
+        "%t.##.t..##..t.%",
+        "%%%%%%%%%%%%%%%%",
+    ],
+    legend={
+        '%': dict(solid=True, wall='scrapwall'),
+        '#': dict(solid=True, wall=['shack_a', 'shack_b']),
+        'E': dict(solid=True, wall='dw_elder', shop='guild',
+                  name="The Elder's Hut", art='elder_face',
+                  backdrop='shack_a',
+                  greeting='Elder Nan pours you each a thimble of water from '
+                           'her own jar. "The village is in your hands. A '
+                           'FILTER CORE from Carvel, a FUSION CELL from the '
+                           'bunker. Come back alive."'),
+        'T': dict(solid=True, wall='dw_trader', shop='shop',
+                  name="Hagen's Trading Post", art='trader_face',
+                  backdrop='shack_b',
+                  stock=['knife', 'pipe', 'spear', 'machete', 'sledge',
+                         'crossbow', 'revolver', 'shotgun', 'rifle',
+                         'leathers', 'tyres', 'scrapmail', 'riotgear',
+                         'hubcap', 'riotshield', 'hardhat', 'gloves',
+                         'bottlecap', 'rounds', 'shells', 'bolts', 'cells',
+                         'medkit', 'antitox', 'glowstick', 'molotov',
+                         'grenade'],
+                  greeting='Hagen\'s ears twitch over a pile of salvage. '
+                           '"Scrap for goods, goods for scrap. No credit, '
+                           'not even for heroes."'),
+        'H': dict(solid=True, wall='dw_healer', shop='temple',
+                  name="Bryony's Tent", art='healer_face', backdrop='shack_a',
+                  greeting='Mother Bryony, green as a cabbage and twice as '
+                           'kind, looks up from her mortar. "Sit. Show me '
+                           'where it hurts."'),
+        'K': dict(solid=True, wall='dw_bunk', shop='inn',
+                  name='The Bunkhouse', art='keeper_face', backdrop='shack_b',
+                  price=3,
+                  greeting='Big Abel wipes down the bar. "Cot and a bowl of '
+                           'mash, three scrap a head. The water\'s boiled '
+                           'twice."',
+                  news=['"Rusk\'s raiders hold the old truck stop north-west '
+                        'on the road. They took a caravan last month, and a '
+                        'keycard off a dead soldier, so they say."',
+                        '"Don\'t walk on the glowing ground south of the '
+                        'road. Ground like that changes people."',
+                        '"Sef the nomad camps up by the rocks west of the '
+                        'crossroads. Knows the wastes better than anyone."',
+                        '"There\'s an old man living in Carvel. Mad as a '
+                        'bag of rats, but he\'s survived there twenty years."',
+                        '"Mags says the bunker\'s doors only open for a '
+                        'password. Mags says a lot of things."']),
+        'M': dict(solid=True, wall='dw_mags', shop='sage',
+                  name="Mags's Workshop", art='mags_face', backdrop='shack_b',
+                  price=5,
+                  greeting='Mags pushes her goggles up. "Five scrap for my '
+                           'time. I\'ve read every scrap of old-world paper '
+                           'that came through that gate."',
+                  lore='"Before the war Carvel was a city of half a million. '
+                       'The army built Facility Nine to keep the important '
+                       'people safe when the bombs came. The important '
+                       'people never got there. Whatever\'s down there has '
+                       'been waiting for them a long time."'),
+        'P': dict(solid=True, wall='dw_purifier', hook='purifier',
+                  name='The Purifier'),
+        'G': dict(solid=True, wall='dw_gate', goto=['waste', 1, 12, 1],
+                  ask='The village gate. Go out into the wastes?'),
+        'f': dict(sprite='campfire'),
+        't': dict(sprite='deadtree'),
+    },
+)
+
+# ----------------------------------------------------------- the wastes
+
+WASTE = dict(
+    name='The Wastes',
+    outdoor=True,
+    music='waste',
+    theme=dict(floor='sand', wall='rockface', fog='#d0a878', light=7.0,
+               sky_top='#6a4030', sky_horizon='#e8b078', falling='#b09870'),
+    rate=0.035,
+    encounters=[
+        (5, [('raider', 3, 5)]),
+        (4, [('glowhound', 2, 4)]),
+        (3, [('ashrat', 4, 8)]),
+        (2, [('radbat', 3, 6)]),
+        (2, [('giantant', 1, 3)]),
+        (1, [('scorched', 2, 4)]),
+    ],
+    map=[
+        "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "^k..^^^....t....^^^....c...C^^^^",
+        "^...^^...s.....^^^^.........^^^^",
+        "^.t....T.f.T...^^......^^...r.^^",
+        "^......R.......^....t..^^...r..^",
+        "^^^...T...T....^.......^^...r..^",
+        "^^^..........t.....ww.......r..^",
+        "^.....^^............w...rrrrr..^",
+        "^..t..^^N^.....p........r......^",
+        "^.....^^.^..............r..t...^",
+        "^.......g.....rrrrrrrrrrr......^",
+        "^rrrrrrrrrrrrrr......c....p....^",
+        "V..............^^^.............^",
+        "^.....t........^^^......t...^^^^",
+        "^..^^.......p.......XXXX....^^^^",
+        "^..^^..............XXZXX....^^^^",
+        "^..........t........XXXX.......^",
+        "^...O.........ww.........rrrrr.^",
+        "^.........c...ww.........r...r.^",
+        "^^^^......................h..r.^",
+        "^^^^^...t.......^^^.......#B#r.^",
+        "^^^^^^..........^^^.......#.#..^",
+        "^^^^^^^^^^^^^^^^^^^^^^^^^^#>#^^^",
+        "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    ],
+    legend={
+        '^': dict(solid=True, wall='rockface'),
+        'w': dict(solid=True, wall='ruinwall'),
+        '#': dict(solid=True, wall='bk_hazard'),
+        'r': dict(floor='road'),
+        'V': dict(solid=True, wall='dw_gate', goto=['village', 14, 4, 3],
+                  ask='The gate of Dustwater. Go home?'),
+        'C': dict(solid=True, wall='city_gate', goto=['city', 1, 1, 2],
+                  ask='A gap in the old city wall, under a rusted sign: '
+                      'CARVEL. Go into the ruins?'),
+        'B': dict(solid=True, door='locked', wall='bunker_hatch',
+                  key='keycard',
+                  locked_msg='A blast hatch in a concrete bunker, stencilled '
+                             'FACILITY 9. Beside it is a card slot, and a '
+                             'little red light. It wants a keycard.'),
+        '>': dict(floor='@stairs', goto=['bunk1', 1, 1, 2], once=True,
+                  title='Facility Nine',
+                  ask='Concrete stairs go down into the dark. Go down into '
+                      'the bunker?',
+                  msg='The hatch grinds shut behind you, and the stairs go '
+                      'down a long way.'),
+        'R': dict(sprite='raiderboss', sprite_after='barrels',
+                  fight=[('rusk', 1), ('raider', 6)], flag='rusk',
+                  item='keycard',
+                  fight_msg='Rusk\'s camp: an old truck stop ringed with '
+                            'tents and stolen barrels. Kingpin Rusk himself '
+                            'climbs off a heap of tyres, a chain over one '
+                            'shoulder. "Tourists! You\'ll pay the toll. '
+                            'Everything you\'ve got, and then your teeth."',
+                  after='Rusk goes down, and his raiders scatter into the '
+                        'dunes.',
+                  item_msg='In Rusk\'s strongbox is a plastic card stamped '
+                           'FACILITY 9.'),
+        'T': dict(sprite='tent', block=True),
+        'f': dict(sprite='campfire'),
+        't': dict(sprite='deadtree'),
+        'p': dict(sprite='pylon'),
+        'c': dict(sprite='carwreck'),
+        'k': dict(sprite='carwreck', sprite_open='carwreck',
+                  chest=dict(gold='3d10+20', items=['medkit', 'molotov'],
+                             look='The wreck of a caravan cart, picked over '
+                                  'by raiders. A strongbox is bolted under '
+                                  'the seat.')),
+        's': dict(sprite='signpost', once=True, title='A sign',
+                  msg='Words daubed on a car door, nailed to a post: '
+                      '"RUSK\'S ROAD. TOLL IS YOUR TEETH."'),
+        'g': dict(sprite='signpost', once=True, title='The crossroads',
+                  msg='An old road sign, shot full of holes: CARVEL, north '
+                      'east. Someone has painted an arrow back the way you '
+                      'came: DUSTWATER. And someone else, south-east, in '
+                      'red: KEEP AWAY.'),
+        'h': dict(sprite='signpost', once=True, title='A sign',
+                  msg='A steel sign, still bright under the dust: FEDERAL '
+                      'FACILITY 9. AUTHORISED PERSONNEL ONLY. USE OF LETHAL '
+                      'FORCE IS AUTHORISED.'),
+        'O': dict(floor='ww_water', fountain='heal',
+                  look='A spring among the rocks: real water, clear and '
+                       'cold. Drink?',
+                  drink='It tastes of stone and nothing else. Your wounds '
+                        'stop aching.'),
+        'X': dict(floor='rad_ground', rad=1,
+                  rad_msg='The ground here glows faintly green, and your '
+                          'skin prickles. Radiation!'),
+        'Z': dict(floor='rad_ground', rad=1, sprite='barrels',
+                  sprite_open='barrels',
+                  chest=dict(gold='4d10+30', items=['rifle', 'grenade'],
+                             trap='blast',
+                             look='Army supply drums, half buried in the '
+                                  'glowing ground.')),
+        'N': dict(sprite='nomad', block=True, talk=dict(
+            id='sef', name='Sef, a nomad', art='nomad_face',
+            greeting='A nomad sits in the shade of the rocks, wrapped in '
+                     'sand-coloured rags. "Dustwater folk, this far out? '
+                     'Sit. Ask. Or buy WATER."',
+            topics={
+                'name': '"Sef. Just Sef."',
+                'job': '"I walk the ROADS, and I sell WATER where there is '
+                       'none."',
+                'roads': '"The road east goes to CARVEL, north. South of '
+                         'it the ground GLOWS. Further south-east is the '
+                         'BUNKER."',
+                'water': {'cost': 15, 'heal': True,
+                          'text': 'Sef unslings a heavy skin, and you all '
+                                  'drink. It is the best water you have '
+                                  'ever tasted.',
+                          'poor': '"Fifteen scrap a round, friend."'},
+                'carvel': '"Big dead city. ANTS nest in the south of it. '
+                          'The burned ones, the SCORCHED, walk the streets. '
+                          'And an old HERMIT lives there, who talks to '
+                          'them."',
+                'ants': '"They\'ll take a man\'s leg off. Fire keeps them '
+                        'back."',
+                'scorched': '"People, once. The radiation cooked them '
+                            'slowly. They are not people now."',
+                'hermit': '"Grue. Lives in the middle of Carvel. He knows '
+                          'the WATERWORKS."',
+                'waterworks': '"Under Carvel. Something big lives in the '
+                              'water down there."',
+                'glows': '"The radiation. Pure humans just burn. Mutants '
+                         'burn, and sometimes CHANGE. There\'s an army '
+                         'CACHE out in the middle of it."',
+                'change': '"Grow a new eye. A new arm. A new trick. Not '
+                          'always a good one."',
+                'cache': '"Army drums. Rusk never dared fetch them."',
+                'bunker': '"Facility NINE. Sealed tight. You need a '
+                          'KEYCARD, and RUSK has one."',
+                'rusk': '"Kingpin of the raiders. Camps at the old truck '
+                        'stop, north-west. Mean as a snake, and twice as '
+                        'cold."',
+                'keycard': '"Took it off a dead soldier, the story goes. '
+                           'He wears it round his neck."',
+                'nine': '"The bunker. Its people never came out."',
+            },
+            unknown='"The wastes don\'t talk about that."',
+            bye='"Walk soft."')),
+    },
+)
+
+# ------------------------------------------------------- Carvel, the ruins
+
+CITY = dict(
+    name='The Ruins of Carvel',
+    outdoor=True,
+    music='ruins',
+    theme=dict(floor='asphalt', wall='tower_a', fog='#a89880', light=6.5,
+               sky_top='#4a3438', sky_horizon='#c89a78', falling='#8a8478'),
+    rate=0.05,
+    encounters=[
+        (4, [('scorched', 2, 5)]),
+        (3, [('giantant', 2, 3)]),
+        (2, [('raider', 3, 5)]),
+        (2, [('mindworm', 1, 2)]),
+        (2, [('spider', 1, 3)]),
+        (1, [('thornwalker', 1, 2)]),
+    ],
+    map=[
+        "######################",
+        "#<.....#........#....#",
+        "#.###..#.##.###.#.##.#",
+        "#.#a#..#.##.#c#...##.#",
+        "#.....##....#.#.#....#",
+        "###.#....##.....#.##.#",
+        "#...#.##.##.###.#.##.#",
+        "#.###.##....#n#.#....#",
+        "#.....##.##.....####.#",
+        "##.####..##.###......#",
+        "#.......#...#.#.####.#",
+        "#.##.##.#.###.#....#.#",
+        "#.##.##...#...####.#.#",
+        "#......#.##.#......#.#",
+        "######.#....#.##.###.#",
+        "#.....A#.####.##.....#",
+        "#.###..........#.###.#",
+        "#...#.##.###.#.#..W#.#",
+        "#.#...##.#.....#.....#",
+        "######################",
+    ],
+    legend={
+        '#': dict(solid=True, wall=['tower_a', 'tower_b', 'rubble',
+                                    'shopfront', 'tower_a']),
+        '<': dict(sprite='signpost', goto=['waste', 27, 2, 2], once=True,
+                  title='Carvel',
+                  ask='The gap in the city wall. Go back out into the '
+                      'wastes?',
+                  msg='Towers stand around you like broken teeth, black '
+                      'with old fire. Cars rust where they stopped a '
+                      'century ago. Nothing moves, but something is '
+                      'watching.'),
+        'a': dict(sprite='bones', once=True, title='A dead soldier',
+                  msg='A soldier\'s bones, in the rags of a uniform, sit '
+                      'against the wall where he died. In the pocket of '
+                      'his jacket, sealed in plastic, are his orders:\n\n'
+                      '"ALL PERSONNEL TO FACILITY 9. EVACUATION '
+                      'AUTHORISATION: SUNRISE. GOD HELP US."',
+                  flag='orders'),
+        'c': dict(sprite='barrels', sprite_open='barrels',
+                  chest=dict(gold='3d10+25', items=['shotgun', 'shells'],
+                             trap='poison',
+                             look='A gun shop\'s back-room safe, its door '
+                                  'still shut.')),
+        'A': dict(sprite='giantant', sprite_after=None,
+                  fight=[('antqueen', 1), ('giantant', 5)],
+                  flag='antnest',
+                  item='riotshield',
+                  fight_msg='The street ends in a mound of earth as tall as a '
+                            'house, and the mound is moving. Giant ants pour '
+                            'out of it, mandibles clacking, and behind them '
+                            'heaves their queen, swollen and pale.',
+                  after='The queen shudders and dies, and the last of her '
+                        'brood curls up beside her.',
+                  item_msg='Half buried in the nest is a police riot shield.'),
+        'W': dict(solid=True, wall='waterworks_gate',
+                  goto=['water', 1, 1, 2],
+                  ask='A rusted grille marked CARVEL WATER AUTHORITY. Stairs '
+                      'lead down into the dark, and the smell of wet rot. Go '
+                      'down?'),
+        'n': dict(sprite='hermit', block=True, talk=dict(
+            id='grue', name='Old Grue', art='hermit_face',
+            greeting='An old man in an olive coat sits in a nest of '
+                     'blankets, feeding scraps to something under them. '
+                     '"Visitors! Grue doesn\'t get visitors. The ANTS ate '
+                     'the last ones."',
+            topics={
+                'name': '"Grue. Grue is what\'s left of my name."',
+                'job': '"I listen to the CITY. And I keep my head down."',
+                'city': '"Carvel. Half a million people. Then the SOLDIERS '
+                        'came, and then the bombs."',
+                'soldiers': '"They came to take the important people to '
+                            'the BUNKER. One of them died in the north-west '
+                            'alley. He\'s still there. Still has his ORDERS."',
+                'orders': '"Read them yourselves. Grue doesn\'t read army."',
+                'bunker': '"Facility Nine. South-east, past the glowing '
+                          'ground."',
+                'ants': '"Their nest is in the south-west. Don\'t go '
+                        'there. Or do. Grue doesn\'t mind."',
+                'waterworks': '"South-east of the city. The pipes go down a '
+                              'long way. Old SNAPPER lives at the bottom."',
+                'snapper': '"Big as a car. Shell like a tank. Ate the '
+                           'repair crew, and their FILTERS, and anything '
+                           'else."',
+                'filters': '"Lots of filters, down below. Snapper sits on '
+                           'the spares. Kill it and they\'re yours."',
+                'medicine': {'needs': 'antitox', 'takes': 'antitox',
+                             'gives': 'grenade', 'gold': 25,
+                             'text': 'Grue snatches the antitox and jabs it '
+                                     'into his arm. "Ahh. Twenty years of '
+                                     'rot, gone. Here. Grue was saving this '
+                                     'for the ants." He hands over a '
+                                     'grenade, and a few coins of scrap.',
+                             'refuse': '"Grue\'s blood is bad. Too long '
+                                       'near the glow. An ANTITOX would '
+                                       'help. Grue would pay."'},
+                'antitox': '"MEDICINE. Have you got any?"',
+            },
+            unknown='"Grue doesn\'t know. Grue doesn\'t care."',
+            bye='"Mind the ants."')),
+    },
+)
+
+# --------------------------------------------- the waterworks under Carvel
+
+WATER = dict(
+    name='Carvel Waterworks',
+    depth=1,
+    music='dungeon',
+    theme=dict(wall='ww_wall', door='ww_door', locked='ww_locked',
+               floor='ww_floor', ceil='ww_ceil', ambient=1.6,
+               variants=[('ww_pipes', 0.18), ('ww_valve', 0.06)]),
+    rate=0.055,
+    encounters=[
+        (4, [('ashrat', 4, 8)]),
+        (3, [('sludge', 2, 4)]),
+        (3, [('spider', 1, 3)]),
+        (2, [('radbat', 3, 6)]),
+        (2, [('mindworm', 1, 2)]),
+    ],
+    map=[
+        "####################",
+        "#<..~~~~.#.......#.#",
+        "#.##~~~~.#.#####.#.#",
+        "#.#.......#...#....#",
+        "#.#.###.###.#.#.##.#",
+        "#...#c....#.#...#..#",
+        "###.#.###.#.###.#.##",
+        "#...#...#...#.#.#..#",
+        "#.#####.#####.#.##.#",
+        "#.....#.~~~~~...#..#",
+        "#.###.#.~~~~~.###=##",
+        "#.#v#...~~~~~.#..S.#",
+        "#.#.#####.#####....#",
+        "#...........#...#.h#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='lamppost', goto=['city', 17, 17, 3], once=True,
+                  title='Carvel Waterworks',
+                  ask='Stairs back up to the streets of Carvel. Go up?',
+                  msg='Concrete tunnels, slick with slime, and the sound of '
+                      'water everywhere. Pipes as thick as a man run along '
+                      'the walls. Your light shows only a few paces.\n\n'
+                      'Glow sticks will help, or a mutant who sees in the '
+                      'dark.'),
+        '~': dict(floor='ww_water'),
+        'c': dict(sprite='barrels', sprite_open='barrels',
+                  chest=dict(gold='3d10+20', items=['medkit', 'glowstick'],
+                             look='A maintenance locker.')),
+        'v': dict(once=True, title='The valve room',
+                  msg='A wall of valves and gauges, every needle at zero. '
+                      'A clipboard hangs on a hook, the paper gone to '
+                      'pulp. You can read only: "...spare filter cores in '
+                      'the east sump. DO NOT feed the turtle."'),
+        '=': dict(solid=True, door='locked', key=''),
+        'S': dict(sprite='snapper', sprite_after=None,
+                  fight=[('snapper', 1)], flag='snapper', run=False,
+                  item='filtercore',
+                  fight_msg='The east sump is a lake of black water, and '
+                            'an island in it gets up. Old Snapper is a '
+                            'turtle the size of a car, its shell crusted '
+                            'with pipes and bones. It opens a beak like a '
+                            'bear trap.',
+                  after='Old Snapper sinks into the black water, and does '
+                        'not come up.',
+                  item_msg='On the ledge where it slept is a crate of '
+                           'spares, and in it, sealed in wrapping, a filter '
+                           'core.'),
+        'h': dict(sprite='barrels', sprite_open='barrels',
+                  chest=dict(gold='5d10+40', items=['laser', 'cells'],
+                             look='Snapper\'s hoard: whatever it couldn\'t '
+                                  'eat, piled in a corner.')),
+    },
+)
+
+# -------------------------------------------------- Facility Nine, upper
+
+BUNK1 = dict(
+    name='Facility Nine',
+    depth=1,
+    music='bunker',
+    theme=dict(wall='bk_wall', door='bk_door', locked='bk_locked',
+               floor='bk_floor', ceil='bk_ceil', stairs='bk_lift',
+               ambient=2.0,
+               variants=[('bk_terminal', 0.08), ('bk_hazard', 0.08),
+                         ('bk_nine', 0.05)]),
+    rate=0.05,
+    encounters=[
+        (4, [('drone', 2, 3)]),
+        (3, [('secbot', 1, 1), ('drone', 1, 2)]),
+        (3, [('scorched', 3, 5)]),
+        (2, [('ashrat', 5, 8)]),
+        (1, [('mindworm', 2, 2)]),
+    ],
+    map=[
+        "####################",
+        "#<....#.....#......#",
+        "#.###.#.###.#.####.#",
+        "#.#t#...#.#...#..#.#",
+        "#.#.#####.#####.##.#",
+        "#.............#....#",
+        "#####.#.#####.#.####",
+        "#.....#.#a..#.#....#",
+        "#.#####.#.#.#.####.#",
+        "#.......#.#...#c...#",
+        "#.#####.#.#####.#R##",
+        "#.#.....#.......#..#",
+        "#.#r#######.###.#.>#",
+        "#...........#...#..#",
+        "####################",
+    ],
+    legend={
+        '<': dict(sprite='lamppost', goto=['waste', 27, 21, 0], once=True,
+                  title='Facility Nine',
+                  ask='The stairs up to the hatch. Go back out into the '
+                      'wastes?',
+                  msg='White corridors, lit by emergency lamps that have '
+                      'burned for a century. The air is dry and tastes of '
+                      'metal. Somewhere a fan turns, and somewhere else '
+                      'something whirs and clicks, coming closer.'),
+        't': dict(once=True, title='A terminal',
+                  msg='A terminal still glows green:\n\n"FACILITY 9 STATUS: '
+                      'LOCKDOWN. PERSONNEL ARRIVED: 0 OF 2,400. GUARDIAN '
+                      'UNIT NINE ACTIVE, PROTECTING REACTOR LEVEL. LOWER '
+                      'LEVEL ACCESS REQUIRES EVACUATION AUTHORISATION."'),
+        'a': dict(sprite='barrels', sprite_open='barrels',
+                  chest=dict(gold='4d10+30', items=['combat', 'emp',
+                                                    'grenade'],
+                             trap='blast',
+                             look='An armoury locker, its door still '
+                                  'locked.')),
+        'c': dict(sprite='barrels', sprite_open='barrels',
+                  chest=dict(gold='3d10+20', items=['medkit', 'cells'],
+                             look='A first aid cabinet.')),
+        'R': dict(solid=True, wall='bk_locked', riddle=dict(
+            flag='bunkercode', title='The blast door',
+            q='A heavy blast door, and a terminal beside it: "LOWER LEVEL '
+              'SEALED. ENTER EVACUATION AUTHORISATION."',
+            a=['sunrise'],
+            right='"AUTHORISATION ACCEPTED. WELCOME, EVACUEE." The blast '
+                  'door rolls aside.',
+            wrong='"AUTHORISATION DENIED." The terminal goes dark for a '
+                  'moment.')),
+        '>': dict(floor='@stairs', goto=['bunk2', 1, 1, 2],
+                  ask='A lift down to the reactor level. Go down?'),
+        'r': dict(sprite='robo', block=True, talk=dict(
+            id='k7', name='Unit K-7', art='robo_face',
+            greeting='A little maintenance robot rolls up to you on worn '
+                     'treads. "GREETINGS, EVACUEES. YOU ARE 104 YEARS '
+                     'LATE. HOW MAY K-7 ASSIST?"',
+            topics={
+                'name': '"K-7. MAINTENANCE UNIT. I REPAIR THINGS. I CAN '
+                        'REPAIR YOU, FOR PARTS."',
+                'job': '"I MAINTAIN FACILITY NINE FOR THE EVACUEES. NO '
+                       'EVACUEES CAME. I MAINTAINED IT ANYWAY."',
+                'repair': {'cost': 25, 'heal': True,
+                           'text': 'K-7 extends a dozen little arms and '
+                                   'goes to work with sealant and staples. '
+                                   '"REPAIRS COMPLETE. PLEASE DO NOT BLEED '
+                                   'ON THE FLOOR."',
+                           'poor': '"REPAIRS REQUIRE 25 SCRAP OF PARTS."'},
+                'evacuees': '"THE AUTHORISATION PHRASE WAS IN THEIR '
+                            'ORDERS. I AM NOT PERMITTED TO TELL YOU."',
+                'orders': '"EVERY SOLDIER CARRIED THEM. MANY SOLDIERS DIED '
+                          'IN CARVEL."',
+                'nine': '"THIS FACILITY. UPPER LEVEL: LIVING QUARTERS. '
+                        'LOWER LEVEL: THE REACTOR, AND THE GUARDIAN."',
+                'guardian': '"GUARDIAN UNIT NINE PROTECTS THE REACTOR. IT '
+                            'DOES NOT KNOW THE WAR IS OVER. IT CANNOT BE '
+                            'FRIGHTENED OR PUT TO SLEEP. EMP DISRUPTS IT."',
+                'reactor': '"SPARE FUSION CELLS ARE STORED BY THE '
+                           'REACTOR, BEHIND THE GUARDIAN."',
+                'cell': '"FUSION CELLS POWER EVERYTHING. EVEN K-7."',
+                'emp': '"ELECTROMAGNETIC PULSE. VERY BAD FOR ROBOTS. '
+                       'THERE ARE EMP GRENADES IN THE ARMOURY."',
+                'armoury': '"NORTH OF HERE, IN THE MIDDLE. LOCKED. I DO '
+                           'NOT HAVE THE KEY. NOBODY HAS THE KEY."',
+            },
+            unknown='"QUERY NOT UNDERSTOOD."',
+            bye='"HAVE A SAFE DAY, EVACUEES."')),
+    },
+)
+
+# --------------------------------------------- Facility Nine, the reactor
+
+BUNK2 = dict(
+    name='Facility Nine: Reactor Level',
+    depth=2,
+    music='bunker',
+    theme=dict(wall='bk_wall', door='bk_door', locked='bk_locked',
+               floor='bk_floor', ceil='bk_ceil', stairs='bk_lift',
+               ambient=1.5,
+               variants=[('bk_hazard', 0.15), ('bk_terminal', 0.06)]),
+    rate=0.055,
+    encounters=[
+        (4, [('secbot', 1, 2)]),
+        (3, [('drone', 2, 4)]),
+        (2, [('scorched', 3, 6)]),
+        (2, [('sludge', 2, 4)]),
+    ],
+    map=[
+        "################",
+        "#<.....#.......#",
+        "#.###..#.#####.#",
+        "#.#c#....#...#.#",
+        "#.#.######.#.#.#",
+        "#.....#....#...#",
+        "###.#.#.####.###",
+        "#...#...#......#",
+        "#.#####=#.####.#",
+        "#.....#..G.....#",
+        "#.###.##......##",
+        "#..x#..#..C...##",
+        "################",
+    ],
+    legend={
+        '<': dict(sprite='lamppost', goto=['bunk1', 18, 11, 0], once=True,
+                  title='The Reactor Level',
+                  ask='The lift back up. Go up?',
+                  msg='The lift opens onto yellow and black stripes, and a '
+                      'deep hum you feel in your teeth. Signs everywhere '
+                      'say DANGER: REACTOR.'),
+        'c': dict(sprite='barrels', sprite_open='barrels',
+                  chest=dict(gold='5d10+40', items=['vibro', 'seeds'],
+                             trap='blast',
+                             look='A steel locker marked SEED BANK: DO NOT '
+                                  'OPEN UNTIL ALL CLEAR.')),
+        '=': dict(solid=True, door='locked', key=''),
+        'G': dict(sprite='guardian', sprite_after=None,
+                  fight=[('guardian', 1), ('drone', 2)], flag='guardian',
+                  run=False, item='fusioncell',
+                  fight_msg='The reactor hall. Before the reactor stands '
+                            'Guardian Unit Nine, three metres of armour and '
+                            'guns, and it turns to face you with a whine of '
+                            'old motors.\n\n"UNAUTHORISED PERSONNEL. '
+                            'LETHAL FORCE IS AUTHORISED."',
+                  after='Guardian Unit Nine sparks, shudders, and falls '
+                        'with a crash that echoes through the bunker. '
+                        'Then there is only the hum of the reactor.',
+                  item_msg='In a rack by the reactor are spare fusion cells. '
+                           'You take the one whose gauge reads full.'),
+        'x': dict(sprite='bones', once=True, title="The doctor's log",
+                  msg='Bones in a white coat, and a recorder that still '
+                      'plays:\n\n"Dr Adebayo, day 31. Nobody came. Not the '
+                      'President, not the generals, nobody. The Guardian '
+                      'won\'t let me near the reactor; it doesn\'t know me. '
+                      'I\'ve put the seed bank in the locker by the lift. '
+                      'If anyone ever hears this: plant them."'),
+        'C': dict(sprite='lamppost', requires='guardian',
+                  goto=['village', 6, 6, 0],
+                  ask='An emergency lift to the surface, live now the '
+                      'Guardian is down. Its panel offers one stop: '
+                      'DUSTWATER RELAY. Ride it home?'),
+    },
+)
+
+LEVELS = {'village': VILLAGE, 'waste': WASTE, 'city': CITY, 'water': WATER,
+          'bunk1': BUNK1, 'bunk2': BUNK2}
+
+HINTS = [
+    ('rusk', '"The bunker wants a keycard. Rusk took one off a dead '
+             'soldier, and he camps at the truck stop north-west of the '
+             'crossroads. Take molotovs. Raiders burn."'),
+    ('snapper', '"The waterworks are under Carvel, in the south-east of the '
+                'city. The spare filter cores were kept in the east sump, '
+                'behind a locked door. Something lives there."'),
+    ('orders', '"Army bunkers had passwords. Every soldier sent to Nine '
+               'would have had his orders. Look in Carvel for one who never '
+               'got there."'),
+    ('bunkercode', '"The bunker\'s lower door wants the phrase in the '
+                   'soldier\'s orders. Just say the one word."'),
+    ('guardian', '"A Guardian unit is a war robot. It can\'t be frightened, '
+                 'and it can\'t be put to sleep, but an EMP grenade will '
+                 'hurt it badly. Its laser sweeps the whole party: keep '
+                 'your healer fresh."'),
+    (None, '"Bring the core and the cell to the purifier, and I\'ll do the '
+           'rest."'),
+]
+
+# --------------------------------------------------------------- the end
+
+
+def purifier_hook(g, sq, nxt):
+    """Bringing both parts home to the purifier ends the game."""
+    if g.st.won:
+        g.tell('The purifier hums, and clean water runs from its spout.', nxt)
+        return
+    core, cell = g.has_item('filtercore'), g.has_item('fusioncell')
+    if not (core and cell):
+        need = [n for n, have in (('a FILTER CORE from the waterworks under '
+                                   'Carvel', core),
+                                  ('a FUSION CELL from Facility Nine', cell))
+                if not have]
+        g.tell('The purifier coughs and shudders. A thin, bitter trickle '
+               'runs from its spout.\n\nIt still needs ' +
+               ' and '.join(need) + '.', nxt)
+        return
+    g.take_item('filtercore')
+    g.take_item('fusioncell')
+    pages = [
+        dict(art='mags_face', title='The Purifier',
+             text="Mags strips the purifier to its bones while the whole "
+                  "village watches. In goes the filter core; in goes the "
+                  "fusion cell. She throws the big switch.\n\nThe purifier "
+                  "hums, a deep clean sound nobody has heard in years, and "
+                  "water runs from its spout: clear, and cold, and sweet."),
+        dict(art='elder_face', title='Dustwater',
+             text="Elder Nan drinks first, as is her right, and then hands "
+                  "the cup to you. \"The village owes you its life,\" she "
+                  "says. \"We'll not forget it, not while there's a "
+                  "Dustwater.\""),
+    ]
+    if g.has_item('seeds'):
+        g.take_item('seeds')
+        pages.append(dict(
+            art='healer_face', title='The Seeds',
+            text="Mother Bryony opens Dr Adebayo's seed tin with shaking "
+                 "hands: wheat, beans, apples, a dozen things nobody in "
+                 "Dustwater has ever tasted. With clean water, she says, "
+                 "they will grow.\n\nNext spring there are green fields "
+                 "around the village for the first time in a hundred "
+                 "years."))
+    pages.append(dict(
+        art='dw_title', title='The End',
+        text="The well is saved, and the wastes are a little less "
+             "frightening than they were.\n\nYou may go on exploring them "
+             "as long as you like.\n\nThank you for playing."))
+    g.victory(pages)
+
+
+HOOKS = {'purifier': purifier_hook}
+
+
+if __name__ == '__main__':
+    blobber.run(sys.modules[__name__])

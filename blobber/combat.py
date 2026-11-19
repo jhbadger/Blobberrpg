@@ -369,7 +369,7 @@ class CombatMode(Mode):
                     th += bonus(c.dx) - bonus(c.st)
                 if r == 20 or (r != 1 and r + th + grp.m['ac'] >= 20):
                     dmg = max(1, roll(c.damage_dice(), rng) +
-                              (0 if ranged else bonus(c.st)))
+                              (0 if ranged else c.damage_bonus()))
                     if r == 20:
                         dmg *= 2
                     f.hp -= dmg
@@ -573,7 +573,7 @@ class CombatMode(Mode):
                 for i in living:
                     c = g.party[i]
                     dmg = roll(parts[1], rng)
-                    if rng.randint(1, 20) <= c.dx:
+                    if rules.save(c, 'breath', rng):
                         dmg //= 2
                     self.hurt(g, i, dmg, beats,
                               m.get('breath_hurt', w('burned')) % (c.name, dmg))
@@ -604,7 +604,8 @@ class CombatMode(Mode):
             c = g.party[i]
             ac = c.ac(self.ward + (2 if i in defending else 0))
             r = rng.randint(1, 20)
-            if r == 20 or (r != 1 and r + m['level'] + 1 + ac >= 20):
+            if r == 20 or (r != 1 and
+                           r + m.get('atk', m['level'] + 1) + ac >= 20):
                 dmg = max(1, roll(m['dmg'], rng))
                 verb = m.get('shoots', w('shoots')) if shooting else 'hits'
                 died = self.hurt(g, i, dmg, beats, '%s %s %s for %d damage.'
@@ -615,13 +616,14 @@ class CombatMode(Mode):
                     parts = spc.split(':')
                     if parts[0] in ('poison', 'paralyze', 'drain') and \
                             rng.randint(1, 100) <= int(parts[1]):
-                        if parts[0] == 'poison' and c.status == 'ok':
+                        if parts[0] == 'poison' and c.status == 'ok' and \
+                                not rules.save(c, 'poison', rng):
                             c.status = 'poisoned'
                             beats.append((w('is_poisoned', c.name),
                                           self.snap(g, i)))
                         elif parts[0] == 'paralyze' and c.status in (
                                 'ok', 'poisoned'):
-                            if rng.randint(1, 20) > c.lk:
+                            if not rules.save(c, 'paralyze', rng):
                                 c.status = 'paralyzed'
                                 beats.append((w('is_paralyzed', c.name),
                                               self.snap(g, i)))
@@ -715,6 +717,7 @@ class CombatMode(Mode):
         gold = sum(roll(MONSTERS[k].get('gold', '0'), rng)
                    for k in self.kills)
         alive = [c for c in g.party if c.alive]
+        xp += int(gold * rules.GOLD_XP)
         share = xp // max(1, len(alive))
         self.shown.append('Victory! The foes are vanquished.')
         before = {id(c): c.can_level() for c in alive}

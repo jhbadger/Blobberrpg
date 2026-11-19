@@ -9,13 +9,15 @@ and adds the level's own.  A legend entry is a dict:
   floor/ceil textures for an open square ('@stairs' = the theme's stairs)
   sprite     a picture standing in the square (see art.py)
   door       True for a door, 'locked' for a locked one
-  key        the item that opens a locked door ('' = can't be picked)
+  key        the item that opens a locked door ('' = none: it can only
+             be picked or forced)
   secret     looks like wall but you can walk through it
   riddle     {'q': question, 'a': [answers], 'flag': name} a door that
              opens when answered
   goto       [level, x, y, facing] where stairs or a portal lead
   stairs     'up' or 'down' (only for the wording)
-  msg        text shown when you step here ('once': only the first time)
+  msg        text shown when you step here ('once': only the first time;
+             'flag': a flag it sets, for something learned by reading)
   fight      [(monster, count), ...] fought on arrival until won
   chest      {'gold': dice, 'items': [...], 'trap': 'poison'|'blast'}
   fountain   'heal' | 'mana' | 'poison' | 'cure'
@@ -23,6 +25,8 @@ and adds the level's own.  A legend entry is a dict:
   spin       True: turns the party round at random
   teleport   [x, y, facing] (same level)
   dark       magical darkness: no light works here
+  rad        radiation of this class: each step costs everyone that
+             many d6 (half on a save); 'rad_msg' the first time
   antimagic  spells fail here
   shop       'guild' | 'shop' | 'temple' | 'inn' | 'sage' (bump to enter)
   hook       name of a function in the game's HOOKS
