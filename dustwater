@@ -854,7 +854,8 @@ WASTE = dict(
     name='The Wastes',
     outdoor=True,
     music='waste',
-    theme=dict(floor='sand', wall='rockface', fog='#d0a878', light=7.0,
+    theme=dict(floor='sand', wall='rockface', stairs='bk_lift',
+               fog='#d0a878', light=7.0,
                sky_top='#6a4030', sky_horizon='#e8b078', falling='#b09870'),
     rate=0.035,
     encounters=[

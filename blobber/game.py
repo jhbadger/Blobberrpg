@@ -621,7 +621,7 @@ class Game:
             return Look(False)
         floor = sq.get('floor') or t.get('floor')
         if floor == '@stairs':
-            floor = t.get('stairs', floor)
+            floor = t.get('stairs') or t.get('floor')
         ceil = sq.get('ceil', t.get('ceil'))
         sprite = sq.get('sprite')
         if sq.get('requires') and not self.flag(sq['requires']):

@@ -166,7 +166,12 @@ def selftest(gdef):
                 for key in ('wall', 'floor', 'ceil'):
                     t = sq.get(key)
                     for name in (t if isinstance(t, list) else [t]):
-                        if name and name != '@stairs' and \
+                        if name == '@stairs' and \
+                                not L.theme.get('stairs'):
+                            problems.append("%s: '@stairs' at %d,%d but the "
+                                            "theme names no stairs texture"
+                                            % (lid, x, y))
+                        elif name and name != '@stairs' and \
                                 name not in textures.names():
                             problems.append('%s: no texture %r' % (lid, name))
                 if sq.get('sprite') and sq['sprite'] not in art.names():
