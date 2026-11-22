@@ -193,7 +193,9 @@ the Python that built it, so rebuild it after changing either.
 This writes a Buildozer project for an Android app: the game as
 `main.py`, the engine, the icon, a `buildozer.spec` (kept if you've
 edited it), and the same `build.sh` and `tar` the tilerpgs use. Then run
-`build.sh` there to build in Docker; the APK lands in `bin/`. The app uses
+`build.sh` there to build in Docker; the APK lands in `bin/`, signed with
+a debug key kept in `~/.android-keys/org.blobber.<game>/` (back it up: a
+phone won't update the app from a build signed with another). The app uses
 a Kivy front end (`blobber/kivyshell.py`), since Android has no Tk.
 `--kivy` runs that front end on the desktop too, if Kivy is installed.
 
